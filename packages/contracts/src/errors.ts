@@ -2,8 +2,16 @@ import { z } from 'zod';
 export const AppErrorCodeSchema = z.enum(['validation_error','unauthorized','forbidden','conflict','policy_blocked','supplier_unavailable','unknown_external_result']);
 export type AppErrorCode = z.infer<typeof AppErrorCodeSchema>;
 export interface AppError { code: AppErrorCode; httpStatus: number; retryable: boolean; publicMessage: string; correlationId: string; internalDetail?: string }
-export const AppErrorSchema = z.object({ code: AppErrorCodeSchema, httpStatus: z.number().int(), retryable: z.boolean(), publicMessage: z.string(), correlationId: z.string(), internalDetail: z.string().optional() });
-export function toPublicError(error: AppError): Omit<AppError, 'internalDetail'> { const { internalDetail: _internalDetail, ...publicError } = error; return publicError; }
+const AppErrorBaseSchema = z.object({ code: AppErrorCodeSchema, httpStatus: z.number().int(), retryable: z.boolean(), publicMessage: z.string(), correlationId: z.string(), internalDetail: z.string().optional() });
+export const AppErrorSchema = AppErrorBaseSchema.superRefine((error, ctx) => {
+  const expected = defaults[error.code];
+  if (error.httpStatus !== expected.httpStatus) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['httpStatus'], message: 'status does not match error code' });
+  if (error.retryable !== expected.retryable) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['retryable'], message: 'retryability does not match error code' });
+});
+export function toPublicError(error: AppError): Omit<AppError, 'internalDetail'> {
+  const safe = defaults[error.code];
+  return { code: error.code, httpStatus: safe.httpStatus, retryable: safe.retryable, publicMessage: safe.publicMessage, correlationId: error.correlationId };
+}
 const defaults: Record<AppErrorCode, Pick<AppError, 'httpStatus'|'retryable'|'publicMessage'>> = {
   validation_error: { httpStatus: 400, retryable: false, publicMessage: 'The request is invalid.' },
   unauthorized: { httpStatus: 401, retryable: false, publicMessage: 'Authentication is required.' },

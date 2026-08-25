@@ -12,6 +12,5 @@ export type OfferKind = z.infer<typeof OfferKindSchema>;
 export const RiskLevelSchema = z.enum(['read', 'prepare', 'commit', 'redirect']);
 export type RiskLevel = z.infer<typeof RiskLevelSchema>;
 
-export interface BudgetLedger { totalLimit: Money; categoryLimits: Partial<Record<TravelCategory, Money>>; estimated: Money; reserved: Money; committed: Money; paid: Money; released: Money; categoryPaid: Partial<Record<TravelCategory, Money>> }
 export interface BudgetDelta { category: TravelCategory; amount: Money; ledgerState: 'estimated'|'reserved'|'committed'|'paid'|'released'; idempotencyKey: string }
 export interface BudgetDecision { allowed: boolean; warning: boolean; blocked: boolean; totalAfter: Money; categoryAfter: Money; reasons: string[] }

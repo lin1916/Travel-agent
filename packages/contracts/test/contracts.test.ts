@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AppErrorSchema, EventEnvelopeSchema, MoneySchema, createAppError, toPublicError } from '../src/index.js';
+import { AppErrorSchema, EventEnvelopeSchema, MoneySchema, createAppError, toPublicError, SupplierWebhookSchema, RevalidateRequestSchema, CreateSupplierOrderSchema, SupplierOrderSnapshotSchema, SupplierOfferSchema, TravelMandateSchema, ActionRequestInputSchema, CancelRequestSchema, RefundRequestSchema, PolicySnapshotSchema } from '../src/index.js';
 
 describe('shared contract schemas', () => {
   it('accepts only non-negative CNY integer cents', () => {
@@ -37,5 +37,18 @@ describe('shared contract schemas', () => {
       expect(error.publicMessage).not.toContain('field=value');
       expect(AppErrorSchema.parse(error).code).toBe(code);
     }
+  });
+
+  it('parses supplier, search, mandate, action, and policy boundary inputs', () => {
+    expect(RevalidateRequestSchema.parse({ supplierId: 'mock', offerSnapshotHash: 'hash', offerId: 'offer' }).offerId).toBe('offer');
+    expect(CreateSupplierOrderSchema.parse({ intentId: 'intent', offerSnapshotHash: 'hash', travelerDataGrantId: 'grant', executionAuthorizationRef: 'auth', externalIdempotencyKey: 'key' }).intentId).toBe('intent');
+    expect(SupplierWebhookSchema.parse({ supplierId: 'mock', rawBody: new Uint8Array([1]), headers: {} }).supplierId).toBe('mock');
+    expect(SupplierOrderSnapshotSchema.parse({ lifecycleStatus: 'creation_unknown', reconciliationStatus: 'pending' }).lifecycleStatus).toBe('creation_unknown');
+    expect(SupplierOfferSchema.parse({ id: 'offer', kind: 'train', supplierId: 'mock', price: { amountCents: 100, currency: 'CNY' }, snapshotHash: 'hash' }).kind).toBe('train');
+    expect(TravelMandateSchema.parse({ id: 'm', tripId: 't', version: 1, totalBudgetLimit: { amountCents: 100, currency: 'CNY' }, categoryLimits: {}, allowedBookingTypes: ['train'], allowedSuppliers: ['mock'], refundableOnly: false, maxSingleOrderAmount: { amountCents: 100, currency: 'CNY' }, allowedSensitiveFields: ['name'], validUntil: new Date().toISOString(), exceptionPolicy: 'none' }).id).toBe('m');
+    expect(ActionRequestInputSchema.parse({ tripId: 't', resourceId: 'r', kind: 'booking', risk: 'commit' }).kind).toBe('booking');
+    expect(CancelRequestSchema.parse({ orderId: 'o', reason: 'changed', expectedVersion: 1 }).orderId).toBe('o');
+    expect(RefundRequestSchema.parse({ orderId: 'o', amount: { amountCents: 10, currency: 'CNY' }, reason: 'changed', expectedVersion: 1 }).orderId).toBe('o');
+    expect(PolicySnapshotSchema.parse({ currentTripVersion: 1, currentBudget: { totalLimit: { amountCents: 100, currency: 'CNY' }, categoryLimits: {}, estimated: { amountCents: 0, currency: 'CNY' }, reserved: { amountCents: 0, currency: 'CNY' }, committed: { amountCents: 0, currency: 'CNY' }, paid: { amountCents: 0, currency: 'CNY' }, released: { amountCents: 0, currency: 'CNY' }, categoryPaid: {} }, currentOfferSnapshotHash: 'h', now: new Date().toISOString() }).currentBudget.totalLimit.currency).toBe('CNY');
   });
 });
