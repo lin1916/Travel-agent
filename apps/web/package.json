@@ -5,7 +5,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint src",
+    "lint": "eslint . --no-warn-ignored",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --passWithNoTests",
     "test:e2e": "playwright test --pass-with-no-tests"

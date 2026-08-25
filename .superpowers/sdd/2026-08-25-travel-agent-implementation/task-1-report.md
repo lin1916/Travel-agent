@@ -41,3 +41,16 @@ The readiness payload is deterministic and has no sensitive fields. API tests us
 ## Concerns
 
 Dependency installation required `pnpm install --ignore-scripts` because the environment blocks package build scripts; TypeScript and Vite verification still completed successfully. The root scripts use pnpm recursive execution while retaining the Turbo task configuration; this avoids a large platform-specific Turbo binary download in the constrained environment and can be switched to Turbo in CI when available.
+## Review round 1 fixes
+
+Changed root orchestration to invoke the declared Turbo pipeline and added Turbo to root development dependencies. Normalized package lint and test script shapes (`eslint . --no-warn-ignored` and `vitest run --passWithNoTests`), while retaining the Web Playwright `test:e2e` script. Added compiled production `start` scripts for Worker and Vault (`node dist/main.js`), removed the malformed `allowBuilds` workspace placeholder, and added the TypeScript ESLint parser to make the shared lint command executable. No `test.tmp` or generated junk remains.
+
+Verification after fixes:
+
+```text
+pnpm --filter @travel/api test -- health.e2e-spec.ts  # 1 test passed
+pnpm lint                                           # Turbo: 5 successful
+pnpm typecheck                                      # Turbo: 5 successful
+pnpm build                                          # Turbo: 5 successful
+pnpm --filter @travel/worker start                  # worker ready
+```
