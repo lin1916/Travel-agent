@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AppErrorSchema, EventEnvelopeSchema, MoneySchema, createAppError, toPublicError, SupplierWebhookSchema, RevalidateRequestSchema, CreateSupplierOrderSchema, SupplierOrderSnapshotSchema, SupplierOfferSchema, TravelMandateSchema, ActionRequestInputSchema, CancelRequestSchema, RefundRequestSchema, PolicySnapshotSchema } from '../src/index.js';
+import { AppErrorSchema, EventEnvelopeSchema, MoneySchema, createAppError, toPublicError, SupplierWebhookSchema, RevalidateRequestSchema, CreateSupplierOrderSchema, SupplierOrderSnapshotSchema, SupplierOfferSchema, TravelMandateSchema, ActionRequestInputSchema, CancelRequestSchema, RefundRequestSchema, PolicySnapshotSchema, CreateOrderResponseSchema, SupplierOrderRefSchema, SupplierOrderUpdateSchema, CancelSupplierOrderSchema, CancelResultSchema } from '../src/index.js';
 
 describe('shared contract schemas', () => {
   it('accepts only non-negative CNY integer cents', () => {
@@ -50,5 +50,21 @@ describe('shared contract schemas', () => {
     expect(CancelRequestSchema.parse({ orderId: 'o', reason: 'changed', expectedVersion: 1 }).orderId).toBe('o');
     expect(RefundRequestSchema.parse({ orderId: 'o', amount: { amountCents: 10, currency: 'CNY' }, reason: 'changed', expectedVersion: 1 }).orderId).toBe('o');
     expect(PolicySnapshotSchema.parse({ currentTripVersion: 1, currentBudget: { totalLimit: { amountCents: 100, currency: 'CNY' }, categoryLimits: {}, estimated: { amountCents: 0, currency: 'CNY' }, reserved: { amountCents: 0, currency: 'CNY' }, committed: { amountCents: 0, currency: 'CNY' }, paid: { amountCents: 0, currency: 'CNY' }, released: { amountCents: 0, currency: 'CNY' }, categoryPaid: {} }, currentOfferSnapshotHash: 'h', now: new Date().toISOString() }).currentBudget.totalLimit.currency).toBe('CNY');
+  });
+
+  it('validates all remaining supplier adapter boundaries', () => {
+    const orderRef = { supplierId: 'mock', supplierOrderId: 'supplier-order-1' };
+    expect(SupplierOrderRefSchema.parse(orderRef)).toEqual(orderRef);
+    expect(CreateOrderResponseSchema.parse({ outcome: 'pending', supplierOrderRef: 'supplier-order-1', paymentUrl: 'https://pay.example.test/1' }).outcome).toBe('pending');
+    expect(SupplierOrderUpdateSchema.parse({ externalEventId: 'evt-1', orderRef, lifecycleStatus: 'confirmed', paymentVerified: true }).lifecycleStatus).toBe('confirmed');
+    expect(CancelSupplierOrderSchema.parse({ orderRef, externalIdempotencyKey: 'cancel-1' }).orderRef).toEqual(orderRef);
+    expect(CancelResultSchema.parse({ outcome: 'completed', refundAmount: { amountCents: 10, currency: 'CNY' } }).outcome).toBe('completed');
+
+    expect(SupplierOrderRefSchema.safeParse({ supplierId: 'mock' }).success).toBe(false);
+    expect(CreateOrderResponseSchema.safeParse({ outcome: 'not-a-result' }).success).toBe(false);
+    expect(CreateOrderResponseSchema.safeParse({ outcome: 'pending', paymentUrl: 'not-a-url' }).success).toBe(false);
+    expect(SupplierOrderUpdateSchema.safeParse({ externalEventId: 'evt-1', orderRef, lifecycleStatus: 'finished', paymentVerified: true }).success).toBe(false);
+    expect(CancelSupplierOrderSchema.safeParse({ orderRef: { supplierId: 'mock' }, externalIdempotencyKey: 'cancel-1' }).success).toBe(false);
+    expect(CancelResultSchema.safeParse({ outcome: 'completed', refundAmount: { amountCents: -1, currency: 'CNY' } }).success).toBe(false);
   });
 });
