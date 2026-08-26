@@ -10,7 +10,7 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
     "test:e2e": "turbo run test:e2e",
-    "db:migrate": "echo db migrations are introduced in a later slice",
+    "db:migrate": "pnpm --filter @travel/persistence db:migrate",
     "security:scan-sensitive-output": "rg -n \"(id_card|身份证|银行卡|password|secret)\" apps packages --glob '!**/*.test.*' --glob '!**/*.spec.*' || exit 0",
     "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:integration && pnpm test:e2e && pnpm security:scan-sensitive-output"
   },

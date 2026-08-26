@@ -1,0 +1,26 @@
+{
+  "name": "@travel/persistence",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --no-warn-ignored",
+    "test": "vitest run --passWithNoTests",
+    "test:integration": "vitest run --passWithNoTests",
+    "db:migrate": "tsx src/migrations/cli.ts"
+  },
+  "dependencies": {
+    "@travel/contracts": "workspace:*",
+    "kysely": "^0.28.2",
+    "pg": "^8.14.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/pg": "^8.11.11",
+    "eslint": "^9.24.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.1"
+  }
+}

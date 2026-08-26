@@ -1,0 +1,176 @@
+import type {
+  EventEnvelope,
+  TaskKind,
+  TaskOutcome,
+  TripRecord,
+} from '@travel/contracts';
+import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
+
+export interface TripsTable {
+  id: string;
+  owner_id: string;
+  version: number;
+  destination: string;
+  starts_at: string;
+  ends_at: string;
+  traveler_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IdempotencyKeysTable {
+  scope: string;
+  key: string;
+  request_hash: string;
+  status: 'claimed' | 'completed';
+  response_json: string | null;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface TasksTable {
+  id: string;
+  kind: TaskKind;
+  status: 'pending' | 'leased' | 'completed' | 'dead_letter';
+  payload_json: string;
+  attempts: number;
+  available_at: string;
+  lease_owner: string | null;
+  lease_until: string | null;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OutboxEventsTable {
+  id: Generated<number>;
+  event_id: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  sequence: number;
+  event_type: string;
+  payload_json: string;
+  published_at: string | null;
+  created_at: string;
+}
+
+export interface InboxMessagesTable {
+  consumer_name: string;
+  event_id: string;
+  external_event_id: string | null;
+  processed_at: string;
+}
+
+export interface EventLogTable {
+  event_id: string;
+  event_type: string;
+  aggregate_type: string;
+  aggregate_id: string;
+  run_id: string | null;
+  sequence: number;
+  schema_version: number;
+  occurred_at: string;
+  request_id: string;
+  correlation_id: string;
+  payload_json: string;
+}
+
+export interface SchemaMigrationsTable {
+  name: string;
+  applied_at: string;
+}
+
+export interface Database {
+  trips: TripsTable;
+  idempotency_keys: IdempotencyKeysTable;
+  tasks: TasksTable;
+  outbox_events: OutboxEventsTable;
+  inbox_messages: InboxMessagesTable;
+  event_log: EventLogTable;
+  schema_migrations: SchemaMigrationsTable;
+}
+
+export type TripRow = Selectable<TripsTable>;
+export type NewTripRow = Insertable<TripsTable>;
+export type TripPatch = Updateable<TripsTable>;
+export type TaskRow = Selectable<TasksTable>;
+export type NewTaskRow = Insertable<TasksTable>;
+
+export interface CreateTripInput {
+  id: string;
+  ownerId: string;
+  destination: string;
+  startsAt: string;
+  endsAt: string;
+  travelerCount: number;
+}
+
+export interface EnqueueTaskInput {
+  id: string;
+  kind: TaskKind;
+  payload: unknown;
+  availableAt?: Date;
+}
+
+export interface LeasedTask {
+  id: string;
+  kind: TaskKind;
+  payload: unknown;
+  attempts: number;
+  leaseOwner: string;
+  leaseUntil: string;
+}
+
+export interface TaskCompletion {
+  status: Extract<TaskOutcome['status'], 'completed' | 'dead_letter'>;
+  error?: string;
+}
+
+export function toTripRecord(row: TripRow): TripRecord {
+  return {
+    id: row.id,
+    version: row.version,
+    ownerId: row.owner_id,
+    destination: row.destination,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    travelerCount: row.traveler_count,
+  };
+}
+
+export class RepositoryConflictError extends Error {
+  constructor(message = 'resource version conflict') {
+    super(message);
+    this.name = 'RepositoryConflictError';
+  }
+}
+
+export class IdempotencyConflictError extends Error {
+  constructor() {
+    super('idempotency key was reused with a different request');
+    this.name = 'IdempotencyConflictError';
+  }
+}
+
+export class DatabaseConfigurationError extends Error {
+  constructor() {
+    super('DATABASE_URL is required for PostgreSQL persistence');
+    this.name = 'DatabaseConfigurationError';
+  }
+}
+
+export function eventToRow(event: EventEnvelope): EventLogTable {
+  return {
+    event_id: event.event_id,
+    event_type: event.event_type,
+    aggregate_type: event.aggregate_type,
+    aggregate_id: event.aggregate_id,
+    run_id: event.run_id ?? null,
+    sequence: event.sequence,
+    schema_version: event.schema_version,
+    occurred_at: event.occurred_at,
+    request_id: event.request_id,
+    correlation_id: event.correlation_id,
+    payload_json: JSON.stringify(event.redacted_payload),
+  };
+}
