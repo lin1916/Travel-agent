@@ -34,7 +34,7 @@ export class TaskRepository {
         .where(eb =>
           eb.or([
             eb('status', '=', 'pending'),
-            eb.and([eb('status', '=', 'leased'), eb('lease_until', '<', current)]),
+            eb.and([eb('status', '=', 'leased'), eb('lease_until', '<=', current)]),
           ]),
         )
         .orderBy('available_at')

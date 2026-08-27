@@ -5,6 +5,7 @@ import type {
   TripRecord,
 } from '@travel/contracts';
 import type { Generated, Insertable, Selectable, Updateable } from 'kysely';
+import { createHash } from 'node:crypto';
 
 export interface TripsTable {
   id: string;
@@ -124,6 +125,39 @@ export interface LeasedTask {
 export interface TaskCompletion {
   status: Extract<TaskOutcome['status'], 'completed' | 'dead_letter'>;
   error?: string;
+}
+
+export type EventAppendInput = Omit<EventEnvelope, 'sequence'>;
+
+function canonicalizeRequest(value: unknown): string {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') {
+    return JSON.stringify(value);
+  }
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) {
+      throw new TypeError('idempotency requests must use finite JSON numbers');
+    }
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalizeRequest).join(',')}]`;
+  }
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map(key => `${JSON.stringify(key)}:${canonicalizeRequest(record[key])}`)
+      .join(',')}}`;
+  }
+  throw new TypeError('idempotency requests must be JSON values');
+}
+
+export function canonicalRequestJson(request: unknown): string {
+  return canonicalizeRequest(request);
+}
+
+export function canonicalRequestHash(request: unknown): string {
+  return createHash('sha256').update(canonicalRequestJson(request)).digest('hex');
 }
 
 export function toTripRecord(row: TripRow): TripRecord {

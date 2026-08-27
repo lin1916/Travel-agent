@@ -1,12 +1,16 @@
 import type { Kysely } from 'kysely';
-import type { Database } from '../types.js';
+import { canonicalRequestHash, type Database } from '../types.js';
 
 export type IdempotencyClaim = 'claimed' | 'replay' | 'conflict';
+export type IdempotencyReplayState<T = unknown> =
+  | { status: 'in_flight' }
+  | { status: 'completed'; response: T };
 
 export class IdempotencyRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async claim(scope: string, key: string, requestHash: string): Promise<IdempotencyClaim> {
+  async claim(scope: string, key: string, request: unknown): Promise<IdempotencyClaim> {
+    const requestHash = canonicalRequestHash(request);
     const inserted = await this.db
       .insertInto('idempotency_keys')
       .values({
@@ -41,6 +45,22 @@ export class IdempotencyRepository {
       .where('scope', '=', scope)
       .where('key', '=', key)
       .execute();
+  }
+
+  async getReplayState<T = unknown>(scope: string, key: string): Promise<IdempotencyReplayState<T> | null> {
+    const row = await this.db
+      .selectFrom('idempotency_keys')
+      .select(['status', 'response_json'])
+      .where('scope', '=', scope)
+      .where('key', '=', key)
+      .executeTakeFirst();
+    if (!row) {
+      return null;
+    }
+    if (row.status === 'claimed') {
+      return { status: 'in_flight' };
+    }
+    return { status: 'completed', response: JSON.parse(row.response_json ?? 'null') as T };
   }
 
   async getResponse<T>(scope: string, key: string): Promise<T | null> {

@@ -17,7 +17,7 @@ export class InboxRepository {
         external_event_id: externalEventId ?? null,
         processed_at: new Date().toISOString(),
       })
-      .onConflict(oc => oc.columns(['consumer_name', 'event_id']).doNothing())
+      .onConflict(oc => oc.doNothing())
       .returning('event_id')
       .executeTakeFirst();
     return Boolean(inserted);

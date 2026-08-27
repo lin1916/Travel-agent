@@ -1,13 +1,14 @@
 import type { Kysely } from 'kysely';
 import type { Database, CreateTripInput, TripPatch } from '../types.js';
 import { RepositoryConflictError, toTripRecord } from '../types.js';
+import type { DatabaseTransaction } from '../db.js';
 
 export class TripRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async create(input: CreateTripInput) {
+  async create(input: CreateTripInput, tx?: DatabaseTransaction) {
     const now = new Date().toISOString();
-    const row = await this.db
+    const row = await (tx ?? this.db)
       .insertInto('trips')
       .values({
         id: input.id,
@@ -25,8 +26,8 @@ export class TripRepository {
     return toTripRecord(row);
   }
 
-  async getForOwner(tripId: string, ownerId: string) {
-    const row = await this.db
+  async getForOwner(tripId: string, ownerId: string, tx?: DatabaseTransaction) {
+    const row = await (tx ?? this.db)
       .selectFrom('trips')
       .selectAll()
       .where('id', '=', tripId)
@@ -40,8 +41,9 @@ export class TripRepository {
     ownerId: string,
     expectedVersion: number,
     patch: Pick<TripPatch, 'destination' | 'starts_at' | 'ends_at' | 'traveler_count'>,
+    tx?: DatabaseTransaction,
   ) {
-    const row = await this.db
+    const row = await (tx ?? this.db)
       .updateTable('trips')
       .set({ ...patch, version: expectedVersion + 1, updated_at: new Date().toISOString() })
       .where('id', '=', tripId)

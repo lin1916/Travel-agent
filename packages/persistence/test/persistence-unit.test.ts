@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { createDatabase } from '../src/db.js';
-import { eventToRow, DatabaseConfigurationError } from '../src/types.js';
+import {
+  canonicalRequestHash,
+  canonicalRequestJson,
+  eventToRow,
+  DatabaseConfigurationError,
+} from '../src/types.js';
 
 describe('persistence boundary helpers', () => {
   it('fails closed when PostgreSQL configuration is absent', () => {
@@ -22,5 +27,15 @@ describe('persistence boundary helpers', () => {
     });
     expect(row.payload_json).toBe(JSON.stringify({ travelerRef: 'vault-ref-1' }));
     expect(row.payload_json).not.toContain('身份证');
+  });
+
+  it('hashes equivalent requests identically regardless of object key order', () => {
+    const first = { traveler: { id: 'traveler-1', fields: ['name', 'phone'] }, tripId: 'trip-1' };
+    const reordered = { tripId: 'trip-1', traveler: { fields: ['name', 'phone'], id: 'traveler-1' } };
+
+    expect(canonicalRequestJson(first)).toBe(
+      '{"traveler":{"fields":["name","phone"],"id":"traveler-1"},"tripId":"trip-1"}',
+    );
+    expect(canonicalRequestHash(reordered)).toBe(canonicalRequestHash(first));
   });
 });

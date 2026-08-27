@@ -20,11 +20,18 @@ suite('PostgreSQL idempotency', () => {
     await closeDatabase(db);
   });
 
-  it('replays an identical request and rejects a different request', async () => {
+  it('distinguishes an in-flight duplicate from a completed replay and rejects a different request', async () => {
     const scope = 'trip:trip-' + Date.now() + ':commit';
-    expect(await idempotency.claim(scope, 'key-1', 'hash-a')).toBe('claimed');
+    const request = { tripId: 'trip-1', offerIds: ['offer-1'] };
+    expect(await idempotency.claim(scope, 'key-1', request)).toBe('claimed');
+    expect(await idempotency.claim(scope, 'key-1', { offerIds: ['offer-1'], tripId: 'trip-1' })).toBe('replay');
+    expect(await idempotency.getReplayState(scope, 'key-1')).toEqual({ status: 'in_flight' });
     await idempotency.complete(scope, 'key-1', { accepted: true });
-    expect(await idempotency.claim(scope, 'key-1', 'hash-a')).toBe('replay');
-    expect(await idempotency.claim(scope, 'key-1', 'hash-b')).toBe('conflict');
+    expect(await idempotency.claim(scope, 'key-1', request)).toBe('replay');
+    expect(await idempotency.getReplayState(scope, 'key-1')).toEqual({
+      status: 'completed',
+      response: { accepted: true },
+    });
+    expect(await idempotency.claim(scope, 'key-1', { tripId: 'trip-1', offerIds: ['offer-2'] })).toBe('conflict');
   });
 });

@@ -5,6 +5,7 @@ import { EventRepository } from '../src/repositories/event-repository.js';
 import { TaskRepository } from '../src/repositories/task-repository.js';
 import { TripRepository } from '../src/repositories/trip-repository.js';
 import { RepositoryConflictError } from '../src/types.js';
+import { withTransaction } from '../src/db.js';
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 const suite = hasDatabase ? describe : describe.skip;
@@ -47,30 +48,74 @@ suite('PostgreSQL repositories', () => {
     ).rejects.toBeInstanceOf(RepositoryConflictError);
   });
 
-  it('allocates ordered event sequences and reclaims expired task leases', async () => {
+  it('allocates ordered event sequences and reclaims a lease at its expiry', async () => {
     const aggregateId = 'run-' + Date.now();
-    const first = await events.append({
-      event_id: aggregateId + '-1',
-      event_type: 'AgentRunCreated',
-      aggregate_type: 'AgentRun',
-      aggregate_id: aggregateId,
-      sequence: 1,
-      schema_version: 1,
-      occurred_at: new Date().toISOString(),
-      request_id: 'request-1',
-      correlation_id: 'correlation-1',
-      redacted_payload: {},
-    });
-    expect(first.sequence).toBe(1);
+    const appended = await Promise.all(
+      ['AgentRunCreated', 'AgentRunUpdated'].map((eventType, index) =>
+        events.append({
+          event_id: aggregateId + '-' + (index + 1),
+          event_type: eventType,
+          aggregate_type: 'AgentRun',
+          aggregate_id: aggregateId,
+          schema_version: 1,
+          occurred_at: new Date().toISOString(),
+          request_id: 'request-' + (index + 1),
+          correlation_id: 'correlation-1',
+          redacted_payload: {},
+        }),
+      ),
+    );
+    expect(appended.map(event => event.sequence).sort()).toEqual([1, 2]);
 
     await tasks.enqueue({
       id: aggregateId + '-task',
       kind: 'search',
       payload: { aggregateId },
     });
-    const leased = await tasks.lease('worker-1', new Date(), 1);
+    const leaseStart = new Date();
+    const leased = await tasks.lease('worker-1', leaseStart, 1);
     expect(leased?.leaseOwner).toBe('worker-1');
-    const reclaimed = await tasks.lease('worker-2', new Date(Date.now() + 2_000), 30);
+    const reclaimed = await tasks.lease('worker-2', new Date(leaseStart.getTime() + 1_000), 30);
     expect(reclaimed?.leaseOwner).toBe('worker-2');
+  });
+
+  it('rolls back a trip mutation and its event together', async () => {
+    const tripId = 'trip-transaction-' + Date.now();
+    await expect(
+      withTransaction(db, async tx => {
+        await trips.create(
+          {
+            id: tripId,
+            ownerId: 'owner-transaction',
+            destination: '上海',
+            startsAt: '2026-09-01T00:00:00.000Z',
+            endsAt: '2026-09-03T00:00:00.000Z',
+            travelerCount: 2,
+          },
+          tx,
+        );
+        await events.appendAndPublishable(tx, {
+          event_id: tripId + '-event',
+          event_type: 'TripCreated',
+          aggregate_type: 'Trip',
+          aggregate_id: tripId,
+          schema_version: 1,
+          occurred_at: new Date().toISOString(),
+          request_id: 'request-transaction',
+          correlation_id: 'correlation-transaction',
+          redacted_payload: {},
+        });
+        throw new Error('force rollback');
+      }),
+    ).rejects.toThrow('force rollback');
+
+    expect(await trips.getForOwner(tripId, 'owner-transaction')).toBeNull();
+    expect(
+      await db
+        .selectFrom('event_log')
+        .select('event_id')
+        .where('event_id', '=', tripId + '-event')
+        .executeTakeFirst(),
+    ).toBeUndefined();
   });
 });
