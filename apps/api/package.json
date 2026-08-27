@@ -3,14 +3,19 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/main.ts",
+    "prebuild": "pnpm --filter @travel/application build",
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "pnpm --filter @travel/application build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
+    "pretest": "pnpm --filter @travel/application build",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --passWithNoTests",
     "test:e2e": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@travel/application": "workspace:*",
+    "@travel/contracts": "workspace:*",
     "@nestjs/common": "^11.0.11",
     "@nestjs/core": "^11.0.11",
     "@nestjs/platform-fastify": "^11.0.11",

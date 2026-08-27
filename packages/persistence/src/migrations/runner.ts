@@ -1,10 +1,14 @@
 import type { Kysely } from 'kysely';
 import { up as upCore } from '../../migrations/001_core.js';
+import { up as upItineraryBudget } from '../../migrations/002_itinerary_budget.js';
 import type { Database } from '../types.js';
 
 type Migration = { name: string; up: (db: Kysely<Database>) => Promise<void> };
 
-const migrations: Migration[] = [{ name: '001_core', up: upCore }];
+const migrations: Migration[] = [
+  { name: '001_core', up: upCore },
+  { name: '002_itinerary_budget', up: upItineraryBudget },
+];
 
 export async function migrateToLatest(db: Kysely<Database>): Promise<void> {
   await db.schema

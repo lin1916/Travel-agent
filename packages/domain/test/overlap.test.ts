@@ -1,0 +1,37 @@
+import { describe, expect, it } from 'vitest';
+import type { ItineraryItem } from '@travel/contracts';
+import { findDirectOverlaps } from '../src/itinerary/overlap.js';
+
+function item(id: string, startsAt: string, endsAt: string): ItineraryItem {
+  return {
+    id,
+    version: 1,
+    tripId: 'trip-1',
+    category: 'attraction',
+    startsAt,
+    endsAt,
+    confirmed: true,
+  };
+}
+
+describe('findDirectOverlaps', () => {
+  it('uses half-open intervals so touching items are allowed', () => {
+    const existing = item('a', '2026-09-01T01:00:00.000Z', '2026-09-01T02:00:00.000Z');
+    const candidate = item('b', '2026-09-01T02:00:00.000Z', '2026-09-01T03:00:00.000Z');
+    expect(findDirectOverlaps([existing], candidate)).toEqual([]);
+  });
+
+  it('blocks direct overlap with confirmed items only', () => {
+    const existing = item('a', '2026-09-01T01:00:00.000Z', '2026-09-01T03:00:00.000Z');
+    const candidate = item('b', '2026-09-01T02:00:00.000Z', '2026-09-01T04:00:00.000Z');
+    expect(findDirectOverlaps([existing], candidate)).toEqual([
+      {
+        candidateId: 'b',
+        existingId: 'a',
+        startsAt: '2026-09-01T02:00:00.000Z',
+        endsAt: '2026-09-01T03:00:00.000Z',
+      },
+    ]);
+    expect(findDirectOverlaps([{ ...existing, confirmed: false }], candidate)).toEqual([]);
+  });
+});
