@@ -96,6 +96,39 @@ export function applyBudgetDelta(state: BudgetState, delta: BudgetDelta): Budget
   };
 }
 
+type ActiveBudgetBucket = 'estimated' | 'reserved' | 'committed' | 'paid';
+
+export function transitionBudgetAmount(
+  state: BudgetState,
+  category: TravelCategory,
+  from: ActiveBudgetBucket,
+  to: ActiveBudgetBucket | 'released',
+  amountCents: number,
+  idempotencyKey: string,
+): BudgetState {
+  if (state.appliedKeys.has(idempotencyKey)) {
+    return state;
+  }
+  if (!Number.isInteger(amountCents) || amountCents < 0) {
+    throw new Error('transition amount must be a non-negative integer');
+  }
+  if (state.ledger[from].amountCents < amountCents) {
+    throw new Error('transition amount exceeds source bucket');
+  }
+
+  const nextLedger = structuredClone(state.ledger);
+  nextLedger[from].amountCents -= amountCents;
+  nextLedger[to].amountCents += amountCents;
+  if (to === 'released') {
+    const categoryExposure = nextLedger.categoryPaid[category]?.amountCents ?? 0;
+    nextLedger.categoryPaid[category] = money(Math.max(0, categoryExposure - amountCents));
+  }
+  return {
+    ledger: nextLedger,
+    appliedKeys: new Set([...state.appliedKeys, idempotencyKey]),
+  };
+}
+
 export function createEmptyLedger(
   totalLimitCents: number,
   categoryLimits: Partial<Record<TravelCategory, Money>> = {},

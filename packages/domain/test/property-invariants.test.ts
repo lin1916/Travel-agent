@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { applyBudgetDelta, createBudgetState } from '../src/budget/ledger.js';
+import {
+  applyBudgetDelta,
+  createBudgetState,
+  transitionBudgetAmount,
+} from '../src/budget/ledger.js';
 
 const money = (amountCents: number) => ({ amountCents, currency: 'CNY' as const });
 
@@ -26,6 +30,42 @@ describe('budget invariants', () => {
     }
 
     expect(state.ledger.paid.amountCents).toBe(5_050);
-    expect(Object.values(state.ledger).filter(value => typeof value === 'object')).toBeTruthy();
+    expect([
+      state.ledger.estimated,
+      state.ledger.reserved,
+      state.ledger.committed,
+      state.ledger.paid,
+      state.ledger.released,
+    ].every(value => value.amountCents >= 0)).toBe(true);
+  });
+
+  it('conserves exposure while amounts move through booking states', () => {
+    let state = createBudgetState({
+      totalLimit: money(100_000),
+      categoryLimits: {},
+      estimated: money(0),
+      reserved: money(0),
+      committed: money(0),
+      paid: money(0),
+      released: money(0),
+      categoryPaid: {},
+    });
+    state = applyBudgetDelta(state, {
+      category: 'transport',
+      amount: money(10_000),
+      ledgerState: 'reserved',
+      idempotencyKey: 'reserve',
+    });
+    state = transitionBudgetAmount(state, 'transport', 'reserved', 'committed', 10_000, 'commit');
+    state = transitionBudgetAmount(state, 'transport', 'committed', 'paid', 10_000, 'pay');
+    state = transitionBudgetAmount(state, 'transport', 'paid', 'released', 10_000, 'refund');
+
+    expect(state.ledger).toMatchObject({
+      reserved: money(0),
+      committed: money(0),
+      paid: money(0),
+      released: money(10_000),
+    });
+    expect(state.ledger.categoryPaid.transport).toEqual(money(0));
   });
 });
