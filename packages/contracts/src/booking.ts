@@ -43,4 +43,4 @@ export const CancelResultSchema = z.object({
 export interface BookingIntent { id: string; tripId: string; offerId: string; offerKind: OfferKind; status: BookingIntentStatus; version: number }
 export interface RevalidationResult { unchanged: boolean; currentOfferSnapshotHash: string; priceChanged: boolean; inventoryChanged: boolean; refundRulesChanged: boolean }
 export interface RedirectContext { intentId: string; supplierId: string; nonce: string; issuedAt: string; expiresAt: string }
-export interface RedirectTokenService { issue(input: RedirectContext, expiresAt: Date): Promise<string>; verify(token: string, now: Date): Promise<RedirectContext> }
+export interface RedirectTokenService { issue(input: RedirectContext, expiresAt: Date, actorId?: string): Promise<string>; verify(token: string, now: Date, expected?: { actorId?: string; supplierId?: string }): Promise<RedirectContext> }

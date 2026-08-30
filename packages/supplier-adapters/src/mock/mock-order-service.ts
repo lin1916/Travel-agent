@@ -5,6 +5,8 @@ export interface MockOrderOptions { outcome: CreateOrderResponse['outcome']; sna
 export class MockOrderService {
   readonly created = new Map<string, CreateSupplierOrder>();
   constructor(private readonly options: MockOrderOptions = { outcome: 'pending', snapshotHash: 'offer-v1' }) {}
+  setSnapshotHash(snapshotHash: string): void { this.options.snapshotHash = snapshotHash; }
+  setPriceCents(priceCents: number): void { this.options.priceCents = priceCents; }
 
   async revalidate(input: RevalidateRequest): Promise<RevalidatedOffer> {
     return {

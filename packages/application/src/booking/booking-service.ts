@@ -20,11 +20,13 @@ export class InMemoryBookingStore implements BookingIntentStore {
 export class BookingServiceImpl {
   private readonly consumedActions = new Set<string>();
   private readonly idempotency = new Map<string, CommitBookingResult>();
+  private readonly supplierOrders = new Map<string, SupplierOrderSnapshot>();
   constructor(private readonly store: BookingIntentStore, private readonly orders: MockOrderService, private readonly now: () => Date = () => new Date()) {}
 
-  async create(_actorId: string, input: CreateBookingIntentInput): Promise<BookingIntentView> {
+  async create(actorId: string, input: CreateBookingIntentInput): Promise<BookingIntentView> {
+    if (!actorId || !input.tripId || !input.travelerDataGrantId) throw new ApplicationError('validation_error', 'actor, trip, and traveler data grant are required');
     const intent = createBookingIntent(input);
-    await this.store.create({ ...intent, supplierId: input.supplierId, originalPriceCents: input.originalPriceCents, refundRulesHash: input.refundRulesHash, travelerDataGrantId: input.travelerDataGrantId });
+    await this.store.create({ ...intent, ownerId: actorId, supplierId: input.supplierId, originalPriceCents: input.originalPriceCents, refundRulesHash: input.refundRulesHash, travelerDataGrantId: input.travelerDataGrantId });
     return this.view(intent);
   }
 
@@ -39,9 +41,11 @@ export class BookingServiceImpl {
     const intent = await this.authorized(input.intentId, actorId);
     if (input.actionRequestId && this.consumedActions.has(input.actionRequestId)) throw new ApplicationError('conflict', 'action request already consumed');
     if (intent.version !== input.expectedVersion) throw new ApplicationError('conflict', 'booking intent version changed');
-    if (intent.status !== 'draft') throw new ApplicationError('conflict', 'booking intent is already committed');
-    const current = await this.orders.revalidate({ offerId: intent.offerId, supplierId: String(intent.supplierId), offerSnapshotHash: input.selectedOfferSnapshotHash });
-    const revalidation: RevalidationResult = { unchanged: current.snapshotHash === input.selectedOfferSnapshotHash && current.inventoryAvailable && current.refundRulesHash === intent.refundRulesHash && current.price.amountCents === intent.originalPriceCents, currentOfferSnapshotHash: current.snapshotHash, priceChanged: current.price.amountCents !== intent.originalPriceCents, inventoryChanged: !current.inventoryAvailable, refundRulesChanged: current.refundRulesHash !== intent.refundRulesHash };
+    if (intent.status !== 'draft' && intent.status !== 'awaiting_user_decision') throw new ApplicationError('conflict', 'booking intent is already committed');
+    if (!input.actionRequestId && !input.mandateId) throw new ApplicationError('policy_blocked', 'authorization reference is required');
+    if (input.selectedOfferSnapshotHash !== intent.selectedOfferSnapshotHash) throw new ApplicationError('conflict', 'offer snapshot changed');
+    const current = await this.orders.revalidate({ offerId: intent.offerId, supplierId: String(intent.supplierId), offerSnapshotHash: String(intent.selectedOfferSnapshotHash) });
+    const revalidation: RevalidationResult = { unchanged: current.snapshotHash === intent.selectedOfferSnapshotHash && current.inventoryAvailable && current.refundRulesHash === intent.refundRulesHash && current.price.amountCents === intent.originalPriceCents, currentOfferSnapshotHash: current.snapshotHash, priceChanged: current.price.amountCents !== intent.originalPriceCents, inventoryChanged: !current.inventoryAvailable, refundRulesChanged: current.refundRulesHash !== intent.refundRulesHash };
     intent.revalidation = revalidation;
     if (!revalidation.unchanged) {
       const paused = transitionBookingIntent(intent, 'awaiting_user_decision');
@@ -51,17 +55,26 @@ export class BookingServiceImpl {
       return structuredClone(result);
     }
     if (input.actionRequestId) this.consumedActions.add(input.actionRequestId);
-    let next = transitionBookingIntent(intent, 'awaiting_user_decision');
+    let next = intent.status === 'draft' ? transitionBookingIntent(intent, 'awaiting_user_decision') : structuredClone(intent);
     next = transitionBookingIntent(next, 'validating');
     next = transitionBookingIntent(next, 'awaiting_traveler_data_grant');
     next = transitionBookingIntent(next, 'submitting');
-    const response = await this.orders.createOrder({ intentId: intent.id, offerSnapshotHash: input.selectedOfferSnapshotHash, travelerDataGrantId: String(intent.travelerDataGrantId), executionAuthorizationRef: input.actionRequestId ?? input.mandateId ?? 'direct-decision', externalIdempotencyKey: `booking:${intent.id}:${input.idempotencyKey}` });
+    const response = await this.orders.createOrder({ intentId: intent.id, offerSnapshotHash: String(intent.selectedOfferSnapshotHash), travelerDataGrantId: String(intent.travelerDataGrantId), executionAuthorizationRef: input.actionRequestId ?? input.mandateId as string, externalIdempotencyKey: `booking:${intent.id}:${input.idempotencyKey}` });
     const supplierOrder = this.orders.toSnapshot(response);
-    next = transitionBookingIntent(next, 'awaiting_supplier');
+    const orderId = supplierOrder.supplierOrderRef?.supplierOrderId ?? `unknown-${intent.id}`;
+    this.supplierOrders.set(orderId, structuredClone(supplierOrder));
+    next = response.outcome === 'rejected' ? transitionBookingIntent(next, 'failed') : transitionBookingIntent(next, 'awaiting_supplier');
     await this.store.save(next as BookingIntentAggregate & { [key: string]: unknown });
     const result = { intent: this.view(next), supplierOrder };
     this.idempotency.set(`${actorId}:${input.idempotencyKey}`, result);
     return structuredClone(result);
+  }
+
+  async getSupplierOrder(orderId: string): Promise<SupplierOrderSnapshot> {
+    const order = this.supplierOrders.get(orderId);
+    if (!order) throw new ApplicationError('validation_error', 'supplier order not found');
+    if (order.lifecycleStatus === 'creation_unknown') throw new ApplicationError('unknown_external_result', 'supplier order creation is unresolved');
+    return structuredClone(order);
   }
 
   private async authorized(id: string, actorId: string): Promise<BookingIntentAggregate & Record<string, unknown>> {

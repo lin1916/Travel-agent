@@ -30,3 +30,22 @@ GREEN: domain booking tests passed 25/25, supplier adapter tests passed 17/17, a
 
 - Booking persistence repository and production wiring remain in-memory for this task's API path; PostgreSQL schema and migration are present, but a production repository adapter should be added before enabling live booking execution.
 - API route payload validation and full Gateway evaluator wiring need integration with the existing ActionRequest/Mandate providers before production exposure.
+
+## Fix Round 1
+
+- Added resumable commit path from `awaiting_user_decision` after a fresh authorization reference.
+- Commit now requires `actionRequestId` or `mandateId`, binds to the immutable stored offer hash, and never uses a browser hash for supplier calls.
+- Rejected supplier creation transitions the BookingIntent to `failed`; unknown creation remains `creation_unknown`/manual review.
+- Added strict booking create/commit DTO schemas, traveler/extra-field rejection, actor ownership checks, order lookup, and 202 unknown-order behavior.
+- Redirect token issue now allowlists the five required fields and stores actor binding out-of-band for verification; supplier and actor mismatches are rejected.
+- Production API booking provider fails closed when `DATABASE_URL` is missing.
+- Added `apps/api/test/booking.e2e-spec.ts` coverage for strict payloads, authorization, and booking routes.
+
+Fix-round verification:
+
+- `pnpm --filter @travel/application test -- booking-service.test.ts` — 4 files, 20 tests passed.
+- `pnpm --filter @travel/supplier-adapters test -- redirect-token.test.ts` — 2 files, 18 tests passed.
+- `pnpm --filter @travel/api test -- bookings` — 7 files, 27 tests passed.
+- `pnpm --filter @travel/domain test -- booking-state-machine.test.ts` — 6 files, 25 tests passed.
+
+Remaining concerns: durable PostgreSQL booking/order repositories and full evaluator/outbox integration remain follow-up work; production execution is fail-closed without `DATABASE_URL`.
