@@ -155,6 +155,8 @@ export interface TravelerVaultRefsTable {
 
 export interface MandatesTable { id: string; version: number; trip_id: string; owner_id: string; payload_json: string; policy_hash: string; actor_id: string; created_at: string; valid_until: string; revoked_at: string | null }
 export interface ActionRequestsTable { id: string; trip_id: string; owner_id: string; version: number; status: string; payload_json: string; request_hash: string; policy_snapshot_json: string | null; decision_actor_id: string | null; decision_reason: string | null; correlation_id: string; expires_at: string; consumed_at: string | null; created_at: string }
+export interface BookingIntentsTable { id: string; trip_id: string; owner_id: string; offer_id: string; offer_kind: string; status: string; version: number; payload_json: string; created_at: string; updated_at: string }
+export interface SupplierOrdersTable { id: string; intent_id: string; supplier_id: string; lifecycle_status: string; reconciliation_status: string; payload_json: string; external_idempotency_key: string; created_at: string }
 
 export interface Database {
   trips: TripsTable;
@@ -172,6 +174,8 @@ export interface Database {
   traveler_vault_refs: TravelerVaultRefsTable;
   mandates: MandatesTable;
   action_requests: ActionRequestsTable;
+  booking_intents: BookingIntentsTable;
+  supplier_orders: SupplierOrdersTable;
 }
 
 export type TripRow = Selectable<TripsTable>;

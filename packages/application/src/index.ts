@@ -9,3 +9,5 @@ export * from './search/ranker.js';
 export * from './action-requests/action-request-service.js';
 export { MandateStore } from '@travel/domain';
 export { evaluateExecutionPolicy } from '@travel/domain';
+export * from './booking/booking-service.js';
+export * from './booking/revalidation-service.js';
