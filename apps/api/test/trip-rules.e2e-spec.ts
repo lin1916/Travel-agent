@@ -23,6 +23,7 @@ describe('trip rules API', () => {
     const created = await request(app.getHttpServer())
       .post('/v1/trips')
       .set('x-actor-id', 'owner-1')
+      .set('idempotency-key', 'trip-1')
       .send({
         destination: '杭州',
         startsAt: '2026-09-01T00:00:00.000Z',
@@ -47,6 +48,7 @@ describe('trip rules API', () => {
     const created = await request(app.getHttpServer())
       .post('/v1/trips')
       .set('x-actor-id', 'owner-3')
+      .set('idempotency-key', 'trip-2')
       .send({
         destination: '苏州',
         startsAt: '2026-10-01T00:00:00.000Z',
@@ -60,7 +62,7 @@ describe('trip rules API', () => {
     const budget = await request(app.getHttpServer())
       .get('/v1/trips/' + created.body.id + '/budget')
       .set('x-actor-id', 'owner-3');
-    expect(itinerary.body).toEqual([]);
+    expect(itinerary.body).toMatchObject({ items: [], warnings: [] });
     expect(budget.body.totalLimit).toEqual({ amountCents: 100_000, currency: 'CNY' });
   });
 
@@ -68,6 +70,7 @@ describe('trip rules API', () => {
     const invalidTravelers = await request(app.getHttpServer())
       .post('/v1/trips')
       .set('x-actor-id', 'owner-4')
+      .set('idempotency-key', 'trip-3')
       .send({
         destination: '杭州',
         startsAt: '2026-09-01T00:00:00.000Z',
@@ -79,6 +82,7 @@ describe('trip rules API', () => {
     const invalidBudget = await request(app.getHttpServer())
       .post('/v1/trips')
       .set('x-actor-id', 'owner-4')
+      .set('idempotency-key', 'trip-4')
       .send({
         destination: '杭州',
         startsAt: '2026-09-01T00:00:00.000Z',

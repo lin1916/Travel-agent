@@ -19,6 +19,14 @@ const item = (
 });
 
 describe('soft itinerary warnings', () => {
+  it('emits transport advance warning when cities are missing', async () => {
+    const warnings = await buildSoftWarnings([
+      { ...item('activity', 'attraction', '2026-09-01T01:00:00.000Z', '2026-09-01T02:00:00.000Z'), location: undefined },
+      { ...item('transport', 'transport', '2026-09-01T02:30:00.000Z', '2026-09-01T04:00:00.000Z'), location: undefined },
+    ], { estimate: async () => ({ minutes: 60 }) });
+    expect(warnings.map(warning => warning.code)).toContain('airport_advance');
+  });
+
   it('warns for tight transfer and transport advance without blocking', async () => {
     const warnings = await buildSoftWarnings(
       [

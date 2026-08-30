@@ -12,12 +12,11 @@ export async function buildSoftWarnings(
   for (let index = 1; index < confirmed.length; index += 1) {
     const previous = confirmed[index - 1];
     const current = confirmed[index];
-    if (!previous.location?.city || !current.location?.city) {
-      continue;
-    }
+    const fromCity = previous.location?.city ?? '';
+    const toCity = current.location?.city ?? '';
     const route = await routeEstimator.estimate(
-      previous.location.city,
-      current.location.city,
+      fromCity,
+      toCity,
       previous.endsAt,
     );
     const availableMinutes = (Date.parse(current.startsAt) - Date.parse(previous.endsAt)) / 60_000;

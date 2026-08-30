@@ -121,6 +121,9 @@ export function transitionBudgetAmount(
   if (state.ledger[from].amountCents < amountCents) {
     throw new Error('transition amount exceeds source bucket');
   }
+  if (to === 'released' && (state.ledger.categoryPaid[category]?.amountCents ?? 0) < amountCents) {
+    throw new Error('release category exposure is insufficient');
+  }
 
   const nextLedger = structuredClone(state.ledger);
   nextLedger[from].amountCents -= amountCents;
