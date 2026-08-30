@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ItineraryItem } from '@travel/contracts';
 import { findDirectOverlaps } from '../src/itinerary/overlap.js';
+import { validateTrip } from '../src/trip/trip.js';
 
 function item(id: string, startsAt: string, endsAt: string): ItineraryItem {
   return {
@@ -33,5 +34,20 @@ describe('findDirectOverlaps', () => {
       },
     ]);
     expect(findDirectOverlaps([{ ...existing, confirmed: false }], candidate)).toEqual([]);
+  });
+});
+
+describe('trip validation', () => {
+  const validTrip = {
+    destination: '杭州',
+    startsAt: '2026-09-01T09:00:00+08:00',
+    endsAt: '2026-09-03T09:00:00+08:00',
+    travelerCount: 2,
+  };
+
+  it('requires a mainland-China destination, CST timestamps, and integer traveler count', () => {
+    expect(() => validateTrip({ ...validTrip, destination: 'Tokyo' })).toThrow('mainland China');
+    expect(() => validateTrip({ ...validTrip, startsAt: '2026-09-01T09:00:00+09:00' })).toThrow('China Standard Time');
+    expect(() => validateTrip({ ...validTrip, travelerCount: 1.5 })).toThrow('integer');
   });
 });

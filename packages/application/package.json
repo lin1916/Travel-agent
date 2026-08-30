@@ -5,22 +5,24 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "prebuild": "pnpm --filter @travel/domain build",
+    "prebuild": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build",
     "build": "tsc -p tsconfig.json",
-    "pretypecheck": "pnpm --filter @travel/domain build",
+    "pretypecheck": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
-    "pretest": "pnpm --filter @travel/domain build",
+    "pretest": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@travel/contracts": "workspace:*",
     "@travel/domain": "workspace:*"
+    ,"@travel/persistence": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",
     "eslint": "^9.24.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.1.1"
+    "vitest": "^3.1.1",
+    "kysely": "^0.28.2"
   }
 }

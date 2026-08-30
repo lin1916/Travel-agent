@@ -7,6 +7,7 @@ import {
   type BudgetOverride,
   type BudgetState,
 } from '@travel/domain';
+import type { BudgetRepository } from '@travel/persistence';
 
 export class BudgetService {
   private readonly budgets = new Map<string, BudgetState>();
@@ -38,5 +39,14 @@ export class BudgetService {
     const next = applyBudgetDelta(current, delta);
     this.budgets.set(tripId, next);
     return structuredClone(next.ledger);
+  }
+}
+
+export class PersistentBudgetService {
+  constructor(private readonly store: BudgetRepository) {}
+  async get(tripId: string): Promise<BudgetLedger> {
+    const ledger = await this.store.get(tripId);
+    if (!ledger) throw new Error('budget not initialized');
+    return ledger;
   }
 }

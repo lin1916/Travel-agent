@@ -36,6 +36,11 @@ export class TripRepository {
     return row ? toTripRecord(row) : null;
   }
 
+  async get(tripId: string, tx?: DatabaseTransaction) {
+    const row = await (tx ?? this.db).selectFrom('trips').selectAll().where('id', '=', tripId).executeTakeFirst();
+    return row ? toTripRecord(row) : null;
+  }
+
   async updateVersioned(
     tripId: string,
     ownerId: string,

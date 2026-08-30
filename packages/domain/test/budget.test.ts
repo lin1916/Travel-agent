@@ -85,4 +85,35 @@ describe('budget policy', () => {
       }),
     ).toThrow('released amount exceeds current exposure');
   });
+
+  it('rejects a release from a category that has no prior exposure', () => {
+    const reserved = applyBudgetDelta(createBudgetState(ledger()), {
+      category: 'transport',
+      amount: money(10_000),
+      ledgerState: 'reserved',
+      idempotencyKey: 'transport-reserve',
+    });
+    expect(() =>
+      applyBudgetDelta(reserved, {
+        category: 'stay',
+        amount: money(10_000),
+        ledgerState: 'released',
+        idempotencyKey: 'stay-release',
+      }),
+    ).toThrow('released amount exceeds category exposure');
+  });
+
+  it('uses integer threshold checks for large CNY cent amounts', () => {
+    const largeLedger = {
+      ...ledger(),
+      totalLimit: money(9_007_199_254_740_990),
+      categoryLimits: {},
+    };
+    expect(evaluateBudget(largeLedger, {
+      category: 'stay',
+      amount: money(7_205_759_403_792_791),
+      ledgerState: 'reserved',
+      idempotencyKey: 'large-threshold',
+    }).warning).toBe(false);
+  });
 });

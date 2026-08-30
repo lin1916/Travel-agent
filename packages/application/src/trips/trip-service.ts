@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import type { TripRecord } from '@travel/contracts';
 import { validateTrip } from '@travel/domain';
 import { ApplicationError } from '../errors.js';
@@ -11,7 +10,7 @@ export interface CreateTripCommand {
 }
 
 export interface TripStore {
-  create(trip: TripRecord): Promise<TripRecord>;
+  create(trip: TripRecord, options?: unknown): Promise<TripRecord>;
   get(id: string): Promise<TripRecord | null>;
   update(
     id: string,
@@ -53,7 +52,7 @@ export class InMemoryTripStore implements TripStore {
 export class TripService {
   constructor(private readonly store: TripStore) {}
 
-  async create(ownerId: string, command: CreateTripCommand): Promise<TripRecord> {
+  async create(ownerId: string, command: CreateTripCommand, options?: unknown): Promise<TripRecord> {
     try {
       validateTrip(command);
     } catch (error) {
@@ -67,7 +66,7 @@ export class TripService {
       version: 1,
       ownerId,
       ...command,
-    });
+    }, options);
   }
 
   async get(id: string, ownerId: string): Promise<TripRecord> {
@@ -103,3 +102,4 @@ export class TripService {
     return updated;
   }
 }
+import { randomUUID } from 'node:crypto';

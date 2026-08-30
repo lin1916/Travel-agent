@@ -81,6 +81,38 @@ export interface SchemaMigrationsTable {
   applied_at: string;
 }
 
+export interface ItineraryItemsTable {
+  id: string;
+  trip_id: string;
+  version: number;
+  category: string;
+  starts_at: string;
+  ends_at: string;
+  location_json: string | null;
+  offer_id: string | null;
+  supplier_order_id: string | null;
+  confirmed: boolean;
+}
+
+export interface BudgetLedgersTable {
+  trip_id: string;
+  total_limit_cents: number;
+  category_limits_json: string;
+  estimated_cents: number;
+  reserved_cents: number;
+  committed_cents: number;
+  paid_cents: number;
+  released_cents: number;
+  category_paid_json: string;
+  updated_at: string;
+}
+
+export interface BudgetDeltaKeysTable {
+  trip_id: string;
+  idempotency_key: string;
+  applied_at: string;
+}
+
 export interface Database {
   trips: TripsTable;
   idempotency_keys: IdempotencyKeysTable;
@@ -89,6 +121,9 @@ export interface Database {
   inbox_messages: InboxMessagesTable;
   event_log: EventLogTable;
   schema_migrations: SchemaMigrationsTable;
+  itinerary_items: ItineraryItemsTable;
+  budget_ledgers: BudgetLedgersTable;
+  budget_delta_keys: BudgetDeltaKeysTable;
 }
 
 export type TripRow = Selectable<TripsTable>;

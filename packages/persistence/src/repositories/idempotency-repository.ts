@@ -1,5 +1,6 @@
 import type { Kysely } from 'kysely';
 import { canonicalRequestHash, type Database } from '../types.js';
+import type { DatabaseTransaction } from '../db.js';
 
 export type IdempotencyClaim = 'claimed' | 'replay' | 'conflict';
 export type IdempotencyReplayState<T = unknown> =
@@ -9,9 +10,10 @@ export type IdempotencyReplayState<T = unknown> =
 export class IdempotencyRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
-  async claim(scope: string, key: string, request: unknown): Promise<IdempotencyClaim> {
+  async claim(scope: string, key: string, request: unknown, tx?: DatabaseTransaction): Promise<IdempotencyClaim> {
     const requestHash = canonicalRequestHash(request);
-    const inserted = await this.db
+    const connection = tx ?? this.db;
+    const inserted = await connection
       .insertInto('idempotency_keys')
       .values({
         scope,
@@ -29,7 +31,7 @@ export class IdempotencyRepository {
       return 'claimed';
     }
 
-    const existing = await this.db
+    const existing = await connection
       .selectFrom('idempotency_keys')
       .select(['request_hash', 'status'])
       .where('scope', '=', scope)
@@ -38,8 +40,8 @@ export class IdempotencyRepository {
     return existing.request_hash === requestHash ? 'replay' : 'conflict';
   }
 
-  async complete(scope: string, key: string, response: unknown): Promise<void> {
-    await this.db
+  async complete(scope: string, key: string, response: unknown, tx?: DatabaseTransaction): Promise<void> {
+    await (tx ?? this.db)
       .updateTable('idempotency_keys')
       .set({ status: 'completed', response_json: JSON.stringify(response) })
       .where('scope', '=', scope)

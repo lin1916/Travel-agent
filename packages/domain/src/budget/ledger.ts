@@ -41,25 +41,25 @@ export function evaluateBudget(
     categoryCurrent + deltaSign(delta) * delta.amount.amountCents,
   );
   const categoryLimit = ledger.categoryLimits[delta.category]?.amountCents;
-  const totalRatio = ledger.totalLimit.amountCents === 0
-    ? Number.POSITIVE_INFINITY
-    : totalAfterCents / ledger.totalLimit.amountCents;
-  const categoryRatio = categoryLimit === undefined
-    ? 0
+  const totalAtWarningThreshold = ledger.totalLimit.amountCents === 0
+    ? totalAfterCents > 0
+    : BigInt(totalAfterCents) * 100n >= BigInt(ledger.totalLimit.amountCents) * 80n;
+  const categoryAtWarningThreshold = categoryLimit === undefined
+    ? false
     : categoryLimit === 0
-      ? Number.POSITIVE_INFINITY
-      : categoryAfterCents / categoryLimit;
+      ? categoryAfterCents > 0
+      : BigInt(categoryAfterCents) * 100n >= BigInt(categoryLimit) * 80n;
   const exceeds = totalAfterCents > ledger.totalLimit.amountCents
     || (categoryLimit !== undefined && categoryAfterCents > categoryLimit);
   const reasons: string[] = [];
-  if (totalRatio >= 0.8) reasons.push('total_budget_threshold');
-  if (categoryRatio >= 0.8) reasons.push('category_budget_threshold');
+  if (totalAtWarningThreshold) reasons.push('total_budget_threshold');
+  if (categoryAtWarningThreshold) reasons.push('category_budget_threshold');
   if (exceeds) reasons.push('budget_exceeded');
   if (exceeds && validOverride(override)) reasons.push('budget_override:' + override.decisionRef);
 
   return {
     allowed: !exceeds || validOverride(override),
-    warning: totalRatio >= 0.8 || categoryRatio >= 0.8,
+    warning: totalAtWarningThreshold || categoryAtWarningThreshold,
     blocked: exceeds && !validOverride(override),
     totalAfter: money(totalAfterCents),
     categoryAfter: money(categoryAfterCents),
@@ -78,8 +78,14 @@ export function applyBudgetDelta(state: BudgetState, delta: BudgetDelta): Budget
   if (state.appliedKeys.has(delta.idempotencyKey)) {
     return state;
   }
-  if (delta.ledgerState === 'released' && delta.amount.amountCents > exposure(state.ledger)) {
-    throw new Error('released amount exceeds current exposure');
+  if (delta.ledgerState === 'released') {
+    if (delta.amount.amountCents > exposure(state.ledger)) {
+      throw new Error('released amount exceeds current exposure');
+    }
+    const categoryExposure = state.ledger.categoryPaid[delta.category]?.amountCents ?? 0;
+    if (delta.amount.amountCents > categoryExposure) {
+      throw new Error('released amount exceeds category exposure');
+    }
   }
 
   const nextLedger = structuredClone(state.ledger);
