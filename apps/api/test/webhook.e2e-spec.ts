@@ -27,6 +27,9 @@ describe('supplier webhook boundary', () => {
 
   beforeAll(async () => {
     const intake: WebhookIntake = {
+      async resolveOrderId(orderRef) {
+        return orderRef.supplierOrderId === 'supplier-order-1' ? 'local-order-42' : null;
+      },
       async accept(input) {
         const key = `${input.supplierId}:${input.externalEventId}`;
         if (claimed.has(key)) return false;
@@ -76,6 +79,7 @@ describe('supplier webhook boundary', () => {
     expect(queued).toEqual([{
       taskId: 'webhook:mock-train:external-event-1',
       payload: {
+        orderId: 'local-order-42',
         supplierId: 'mock-train',
         externalEventId: 'external-event-1',
         orderRef: { supplierId: 'mock-train', supplierOrderId: 'supplier-order-1' },

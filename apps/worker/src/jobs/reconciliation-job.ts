@@ -11,10 +11,8 @@ export class ReconciliationJob implements TaskHandler {
 
   async handle(task: TaskRecord): Promise<TaskOutcome> {
     if (!task.payload || typeof task.payload !== 'object') throw new Error('reconciliation task payload is invalid');
-    const payload = task.payload as { orderId?: unknown; orderRef?: { supplierOrderId?: unknown }; source?: unknown };
-    const orderId = typeof payload.orderId === 'string'
-      ? payload.orderId
-      : typeof payload.orderRef?.supplierOrderId === 'string' ? payload.orderRef.supplierOrderId : undefined;
+    const payload = task.payload as { orderId?: unknown; source?: unknown };
+    const orderId = typeof payload.orderId === 'string' ? payload.orderId : undefined;
     if (!orderId) throw new Error('reconciliation task requires orderId');
     const requestedSource = payload.source;
     const source: ReconciliationSource = requestedSource === 'webhook' || requestedSource === 'poll' || requestedSource === 'manual'

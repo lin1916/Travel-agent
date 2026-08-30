@@ -14,6 +14,7 @@ describe('database migrations', () => {
       '008_action_request_consumed_at',
       '009_bookings_orders',
       '010_webhooks_reconciliation',
+      '011_inbox_delivery_claims',
     ]);
     expect(migrations[3]?.name).toBe('004_agent_runs');
     expect(migrations[4]?.name).toBe('005_agent_run_summaries');
@@ -22,5 +23,6 @@ describe('database migrations', () => {
     expect(migrations[7]?.name).toBe('008_action_request_consumed_at');
     expect(migrations[8]?.name).toBe('009_bookings_orders');
     expect(migrations[9]?.name).toBe('010_webhooks_reconciliation');
+    expect(migrations[10]?.name).toBe('011_inbox_delivery_claims');
   });
 });

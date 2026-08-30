@@ -20,6 +20,8 @@ export class SearchJob implements TaskHandler {
     if (!tripId) throw new Error('search task requires requests');
     const result = await this.search.search(input);
     if (result.status !== 'completed') throw new Error('worker search unexpectedly re-queued');
+    const retryableFailure = Object.values(result.categories).find(category => category?.retryable);
+    if (retryableFailure) return { status: 'retry', reason: retryableFailure.warning ?? 'supplier search failed' };
     const offers = Object.values(result.offers).flatMap(group => group ?? []);
     await this.results.saveSearchResult(task.id, tripId, offers);
     return { status: 'completed' };

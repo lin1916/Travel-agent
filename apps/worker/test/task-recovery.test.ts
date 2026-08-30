@@ -3,7 +3,10 @@ import type { TaskOutcome } from '@travel/contracts';
 import { SearchService } from '@travel/application';
 import { MockTransportAdapter } from '@travel/supplier-adapters';
 import { OutboxDispatchJob } from '../src/jobs/outbox-dispatch-job.js';
+import { BookingJob } from '../src/jobs/booking-job.js';
 import { SearchJob } from '../src/jobs/search-job.js';
+import { ReconciliationJob } from '../src/jobs/reconciliation-job.js';
+import { createWorkerHandlers } from '../src/worker-composition.js';
 import {
   TaskRunner,
   type TaskHandler,
@@ -78,6 +81,24 @@ class OutcomeHandler implements TaskHandler {
 }
 
 describe('recoverable worker tasks', () => {
+  it('registers booking work in the production handler composition and executes the injected boundary', async () => {
+    const executed: Array<{ taskId: string; payload: unknown }> = [];
+    const handlers = createWorkerHandlers({
+      search: {} as never,
+      results: { saveSearchResult: async () => undefined },
+      reconciliation: { reconcile: async () => ({ orderId: 'unused', status: 'matched', lifecycleStatus: 'confirmed' }) },
+      outbox: { pending: async () => [], markPublished: async () => undefined },
+      inbox: { claim: async () => 'busy', complete: async () => false, release: async () => undefined },
+      bookingExecutor: { execute: async (taskId, payload) => { executed.push({ taskId, payload }); } },
+      eventConsumer: { name: 'unused', deliver: async () => undefined },
+    });
+    const booking = handlers.find(handler => handler.kind === 'booking');
+
+    expect(booking).toBeInstanceOf(BookingJob);
+    await expect(booking?.handle({ id: 'booking-task-1', kind: 'booking', payload: { orderId: 'local-order-1' }, attempts: 1 })).resolves.toEqual({ status: 'completed' });
+    expect(executed).toEqual([{ taskId: 'booking-task-1', payload: { orderId: 'local-order-1' } }]);
+  });
+
   it('executes a queued search and persists normalized offers for its Trip', async () => {
     const saved: Array<{ taskId: string; tripId: string; offerIds: string[] }> = [];
     const transport = new MockTransportAdapter();
@@ -92,6 +113,37 @@ describe('recoverable worker tasks', () => {
 
     expect(outcome).toEqual({ status: 'completed' });
     expect(saved).toEqual([{ taskId: 'search-task-1', tripId: 'trip-1', offerIds: ['train-001', 'train-002'] }]);
+  });
+
+  it('retries a search with a retryable category failure without persisting partial results', async () => {
+    const saved: unknown[] = [];
+    const retryable = Object.assign(new Error('supplier temporarily unavailable'), { retryable: true });
+    const job = new SearchJob(
+      new SearchService({
+        train: new MockTransportAdapter(),
+        flight: { ...new MockTransportAdapter(), supplierId: 'retry-flight', kind: 'flight', search: async () => { throw retryable; } },
+      }),
+      { saveSearchResult: async (...args) => { saved.push(args); } },
+    );
+
+    const outcome = await job.handle({
+      id: 'search-task-retry', kind: 'search', attempts: 1,
+      payload: { requests: [
+        { tripId: 'trip-1', kind: 'train', origin: '上海', destination: '杭州', startsAt: '2026-09-10T08:00:00.000+08:00', travelers: 1 },
+        { tripId: 'trip-1', kind: 'flight', origin: '上海', destination: '广州', startsAt: '2026-09-10T08:00:00.000+08:00', travelers: 1 },
+      ], mode: 'value' },
+    });
+
+    expect(outcome).toEqual({ status: 'retry', reason: 'supplier temporarily unavailable' });
+    expect(saved).toEqual([]);
+  });
+
+  it('never treats a supplier order reference as the local reconciliation order ID', async () => {
+    const reconciled: string[] = [];
+    const job = new ReconciliationJob({ reconcile: async orderId => { reconciled.push(orderId); return { orderId, status: 'matched', lifecycleStatus: 'confirmed' }; } }, 'webhook_update');
+
+    await expect(job.handle({ id: 'webhook-task-1', kind: 'webhook_update', attempts: 1, payload: { orderRef: { supplierOrderId: 'supplier-order-1' }, source: 'webhook' } })).rejects.toThrow('reconciliation task requires orderId');
+    expect(reconciled).toEqual([]);
   });
 
   it('reclaims an expired lease exactly once and rejects stale-owner heartbeat/completion', async () => {
@@ -153,7 +205,7 @@ describe('recoverable worker tasks', () => {
     const published: string[] = [];
     const job = new OutboxDispatchJob(
       { pending: async () => [event], markPublished: async eventId => { published.push(eventId); } },
-      { claim: async (consumerName, eventId) => { const key = `${consumerName}:${eventId}`; if (claimed.has(key)) return false; claimed.add(key); return true; }, release: async (consumerName, eventId) => { claimed.delete(`${consumerName}:${eventId}`); } },
+      { claim: async (consumerName, eventId) => { const key = `${consumerName}:${eventId}`; if (claimed.has(key)) return 'completed'; claimed.add(key); return 'claimed'; }, complete: async () => true, release: async (consumerName, eventId) => { claimed.delete(`${consumerName}:${eventId}`); } },
       { name: 'trip-sse', deliver: async envelope => { delivered.push(envelope.event_id); } },
     );
 
@@ -176,7 +228,8 @@ describe('recoverable worker tasks', () => {
     const job = new OutboxDispatchJob(
       { pending: async () => [event], markPublished: async eventId => { published.push(eventId); } },
       {
-        claim: async (consumerName, eventId) => { const key = `${consumerName}:${eventId}`; if (claimed.has(key)) return false; claimed.add(key); return true; },
+        claim: async (consumerName, eventId) => { const key = `${consumerName}:${eventId}`; if (claimed.has(key)) return 'completed'; claimed.add(key); return 'claimed'; },
+        complete: async () => true,
         release: async (consumerName, eventId) => { claimed.delete(`${consumerName}:${eventId}`); },
       },
       { name: 'trip-sse', deliver: async () => { deliveries += 1; if (deliveries === 1) throw new Error('temporary delivery failure'); } },
@@ -187,5 +240,47 @@ describe('recoverable worker tasks', () => {
 
     expect(deliveries).toBe(2);
     expect(published).toEqual(['event-retry']);
+  });
+
+  it('reclaims a crashed Inbox lease, prevents concurrent delivery, and publishes only after successful delivery', async () => {
+    const event = {
+      event_id: 'event-crash', event_type: 'SupplierOrderUpdated', aggregate_type: 'SupplierOrder', aggregate_id: 'order-1',
+      sequence: 1, schema_version: 1, occurred_at: '2026-08-30T00:00:00.000Z', request_id: 'request-1',
+      correlation_id: 'correlation-1', redacted_payload: { lifecycleStatus: 'confirmed' },
+    };
+    let now = new Date('2026-08-30T00:00:00.000Z');
+    let claim: { owner: string; until: number; completed: boolean } | undefined;
+    const inbox = {
+      claim: async (_consumer: string, _eventId: string, owner: string, claimedAt: Date, leaseSeconds: number) => {
+        if (claim?.completed) return 'completed' as const;
+        if (claim && claim.until > claimedAt.getTime() && claim.owner !== owner) return 'busy' as const;
+        claim = { owner, until: claimedAt.getTime() + leaseSeconds * 1_000, completed: false };
+        return 'claimed' as const;
+      },
+      complete: async (_consumer: string, _eventId: string, owner: string) => {
+        if (!claim || claim.owner !== owner || claim.until <= now.getTime()) return false;
+        claim.completed = true;
+        return true;
+      },
+      release: async (_consumer: string, _eventId: string, owner: string) => { if (claim?.owner === owner) claim = undefined; },
+    };
+    const published: string[] = [];
+    const deliveries: string[] = [];
+    const outbox = { pending: async () => [event], markPublished: async (eventId: string) => { published.push(eventId); } };
+
+    expect(await inbox.claim('trip-sse', event.event_id, 'crashed-worker', now, 10)).toBe('claimed');
+    const first = new OutboxDispatchJob(outbox, inbox, { name: 'trip-sse', deliver: async envelope => { deliveries.push(envelope.event_id); } }, { now: () => now, claimLeaseSeconds: 10 });
+    expect(await first.handle({ id: 'concurrent-worker', kind: 'outbox_dispatch', payload: {}, attempts: 1 })).toEqual({ status: 'retry', reason: 'outbox delivery claim is busy' });
+    expect(deliveries).toEqual([]);
+    expect(published).toEqual([]);
+
+    now = new Date('2026-08-30T00:00:11.000Z');
+    const [reclaimed, concurrent] = await Promise.all([
+      first.handle({ id: 'reclaiming-worker', kind: 'outbox_dispatch', payload: {}, attempts: 2 }),
+      first.handle({ id: 'other-worker', kind: 'outbox_dispatch', payload: {}, attempts: 2 }),
+    ]);
+    expect([reclaimed.status, concurrent.status].sort()).toEqual(['completed', 'retry']);
+    expect(deliveries).toEqual(['event-crash']);
+    expect(published).toEqual(['event-crash']);
   });
 });

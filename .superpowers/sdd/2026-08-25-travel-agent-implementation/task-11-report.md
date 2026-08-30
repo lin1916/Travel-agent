@@ -63,3 +63,23 @@ Base: `ad7e624`
 - Live SSE follow-up uses bounded PostgreSQL polling rather than a push broker, as required for V1; production tuning may adjust the poll interval.
 - Runtime PostgreSQL behavior remains unverified until a reachable `DATABASE_URL` is supplied.
 - Existing test-only in-memory booking/search providers remain in test composition roots; production paths fail closed where durable providers are required.
+
+## Fix Round 1
+
+Addressed review findings with focused RED/GREEN regressions:
+
+- Registered `BookingJob` through `createWorkerHandlers`; production composition now injects an explicit fail-closed booking executor instead of leaving booking tasks without a handler.
+- Replaced permanent Inbox claims with recoverable delivery leases and explicit completion. Forward-only migration `011_inbox_delivery_claims` adds claim owner/expiry and delivered state. Outbox events are marked published only after delivery and Inbox completion; busy claims retry, failed delivery releases, and expired claims can be reclaimed.
+- `SearchJob` now returns a retry outcome when any completed search category is retryable and does not persist partial offers.
+- Webhook acceptance resolves the supplier reference to the local `supplier_orders.id`; reconciliation tasks require that local `orderId` and no longer fall back to supplier IDs. Unmapped references fail closed for manual review.
+- API bootstrap now applies all migrations before Nest repositories are constructed. The production event-stream handoff is explicit fail-closed rather than a no-op consumer.
+
+RED/GREEN evidence:
+
+- RED: updated worker/persistence tests initially failed to compile against the old Inbox boolean/permanent-claim API; GREEN after migration/repository/job redesign: `pnpm --filter @travel/worker exec vitest run test/task-recovery.test.ts --reporter=dot` — 10 passed.
+- GREEN: `pnpm --filter @travel/api exec vitest run test/webhook.e2e-spec.ts --reporter=dot` — 3 passed.
+- GREEN: `pnpm --filter @travel/application exec vitest run test/reconciliation-service.test.ts --reporter=dot` — 3 passed.
+- GREEN: `pnpm --filter @travel/persistence exec vitest run --reporter=dot` — 10 passed, 18 skipped because `DATABASE_URL` is unset.
+- GREEN: `pnpm typecheck` — 13 successful tasks.
+
+The PostgreSQL integration tests compile but remain runtime-skipped in this environment because `DATABASE_URL` is not set.

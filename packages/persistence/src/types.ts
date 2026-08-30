@@ -61,6 +61,9 @@ export interface InboxMessagesTable {
   event_id: string;
   external_event_id: string | null;
   processed_at: string;
+  claim_owner: string | null;
+  claim_until: string | null;
+  delivered_at: string | null;
 }
 
 export interface EventLogTable {

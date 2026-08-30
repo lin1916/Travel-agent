@@ -1,11 +1,8 @@
 import { BookingRepository, InboxRepository, OfferRepository, OutboxRepository, TaskRepository, createDatabase, migrateToLatest } from '@travel/persistence';
 import { PersistentReconciliationOrderStore, ReconciliationServiceImpl, SearchService } from '@travel/application';
 import { MockAttractionAdapter, MockDiningAdapter, MockStayAdapter, MockTransportAdapter } from '@travel/supplier-adapters';
-import { OutboxDispatchJob } from './jobs/outbox-dispatch-job.js';
-import { ReconciliationJob } from './jobs/reconciliation-job.js';
-import { SearchJob } from './jobs/search-job.js';
-import { SupplierPollJob } from './jobs/supplier-poll-job.js';
 import { TaskRunner } from './task-runner.js';
+import { createWorkerHandlers } from './worker-composition.js';
 
 const db = createDatabase();
 await migrateToLatest(db);
@@ -14,15 +11,15 @@ const registry = { get: (supplierId: string) => adapters.find(adapter => adapter
 const reconciliation = new ReconciliationServiceImpl(new PersistentReconciliationOrderStore(new BookingRepository(db)), registry);
 const transport = adapters[0]!;
 const search = new SearchService({ train: transport, flight: transport, stay: adapters[1], attraction: adapters[2], dining: adapters[3] });
-const runner = new TaskRunner(
-  new TaskRepository(db),
-  [
-    new SearchJob(search, new OfferRepository(db)),
-    new SupplierPollJob(reconciliation),
-    new ReconciliationJob(reconciliation),
-    new ReconciliationJob(reconciliation, 'webhook_update'),
-    new OutboxDispatchJob(new OutboxRepository(db), new InboxRepository(db), { name: 'event-stream', deliver: async () => undefined }),
-  ],
+const runner = new TaskRunner(new TaskRepository(db), createWorkerHandlers({
+    bookingExecutor: { execute: async () => { throw new Error('durable booking executor is not configured'); } },
+    search,
+    results: new OfferRepository(db),
+    reconciliation,
+    outbox: new OutboxRepository(db),
+    inbox: new InboxRepository(db),
+    eventConsumer: { name: 'event-stream', deliver: async () => { throw new Error('durable event-stream handoff is not configured'); } },
+  }),
   {
     workerId: process.env.WORKER_ID ?? `worker-${process.pid}`,
     leaseSeconds: Number(process.env.WORKER_LEASE_SECONDS ?? 30),

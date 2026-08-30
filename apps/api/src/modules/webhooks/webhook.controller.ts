@@ -17,6 +17,7 @@ export interface WebhookAcceptance {
 }
 
 export interface WebhookIntake {
+  resolveOrderId?(orderRef: SupplierOrderRef): Promise<string | null>;
   accept(input: WebhookAcceptance): Promise<boolean>;
 }
 
@@ -60,7 +61,10 @@ export class WebhookController {
     }
 
     const taskId = `webhook:${supplierId}:${verified.externalEventId}`;
+    const orderId = this.intake.resolveOrderId ? await this.intake.resolveOrderId(verified.orderRef) : undefined;
+    if (this.intake.resolveOrderId && !orderId) throw new ServiceUnavailableException('supplier order is not locally mapped; manual review required');
     const taskPayload = {
+      ...(orderId ? { orderId } : {}),
       supplierId,
       externalEventId: verified.externalEventId,
       orderRef: verified.orderRef,

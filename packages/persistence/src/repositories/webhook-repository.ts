@@ -13,20 +13,27 @@ export interface AcceptWebhookInput {
 export class WebhookRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
+  async resolveOrderId(orderRef: AcceptWebhookInput['orderRef']): Promise<string | null> {
+    const rows = await this.db.selectFrom('supplier_orders').select(['id', 'payload_json']).where('supplier_id', '=', orderRef.supplierId).execute();
+    return rows.find(row => (JSON.parse(row.payload_json) as { supplierOrderRef?: { supplierOrderId?: string } }).supplierOrderRef?.supplierOrderId === orderRef.supplierOrderId)?.id ?? null;
+  }
+
   async accept(input: AcceptWebhookInput): Promise<boolean> {
     assertDurablePayloadSafe(input.taskPayload, 'task.payload');
     return this.db.transaction().execute(async tx => {
+      const localOrderId = await this.resolveOrderId(input.orderRef);
+      if (!localOrderId) throw new Error('supplier order is not locally mapped; manual review required');
       const receipt = await tx.insertInto('webhook_receipts').values({
         supplier_id: input.supplierId,
         external_event_id: input.externalEventId,
-        order_id: input.orderRef.supplierOrderId,
+        order_id: localOrderId,
         payload_hash: input.payloadHash,
         task_id: input.taskId,
         received_at: new Date().toISOString(),
       }).onConflict(oc => oc.columns(['supplier_id', 'external_event_id']).doNothing()).returning('external_event_id').executeTakeFirst();
       if (!receipt) return false;
 
-      const payloadJson = canonicalRequestJson(input.taskPayload);
+      const payloadJson = canonicalRequestJson({ ...input.taskPayload, orderId: localOrderId });
       const now = new Date().toISOString();
       await tx.insertInto('tasks').values({
         id: input.taskId,
