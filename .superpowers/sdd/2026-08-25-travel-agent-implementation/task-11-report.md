@@ -83,3 +83,23 @@ RED/GREEN evidence:
 - GREEN: `pnpm typecheck` — 13 successful tasks.
 
 The PostgreSQL integration tests compile but remain runtime-skipped in this environment because `DATABASE_URL` is not set.
+
+## Fix Round 2
+
+Addressed the scoped re-review blockers:
+
+- Strengthened `assertDurablePayloadSafe` with traveler-context enforcement. Unknown nested fields under traveler/passenger/guest/customer objects are rejected as traveler plaintext, while vault references, grant IDs, allowed field names, purposes, and other binding metadata remain permitted.
+- Fixed the Inbox external-event insert-conflict path to retain and update the raced row’s actual `event_id`, allowing expired claims keyed by `externalEventId` to be reclaimed safely.
+- Made `WebhookRepository.accept` resolve the local order through the transaction handle (`tx`), keeping order lookup, receipt insertion, and task insertion in one transaction boundary.
+
+RED/GREEN evidence:
+
+- RED: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — 3 new regressions failed: arbitrary nested traveler plaintext was accepted, the raced external-event claim returned `busy`, and webhook lookup escaped the transaction.
+- GREEN: same command — 9 tests passed.
+- GREEN: `pnpm --filter @travel/persistence test` — 13 passed, 18 skipped because `DATABASE_URL` is unset.
+- GREEN: `pnpm --filter @travel/worker test` — 10 passed.
+- GREEN: `pnpm --filter @travel/api exec vitest run test/webhook.e2e-spec.ts test/sse-replay.e2e-spec.ts --reporter=dot` — 6 passed.
+- GREEN: `pnpm typecheck` — 13 successful tasks.
+- GREEN: `pnpm lint` — 13 successful tasks.
+
+PostgreSQL integration behavior remains runtime-unverified in this environment because `DATABASE_URL` is not set.

@@ -9,6 +9,8 @@ import {
 } from '../src/types.js';
 import { ActionRequestRepository } from '../src/repositories/action-request-repository.js';
 import { outboxRowToEnvelope } from '../src/outbox/outbox-repository.js';
+import { InboxRepository } from '../src/inbox/inbox-repository.js';
+import { WebhookRepository } from '../src/repositories/webhook-repository.js';
 
 describe('persistence boundary helpers', () => {
   it('fails closed when PostgreSQL configuration is absent', () => {
@@ -37,6 +39,67 @@ describe('persistence boundary helpers', () => {
     expect(() => assertDurablePayloadSafe({ traveler: { fullName: 'plaintext-value' } })).toThrow(/sensitive payload field/i);
     expect(() => assertDurablePayloadSafe({ rawBody: '[REDACTED]' })).toThrow(/sensitive payload field/i);
     expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'] })).not.toThrow();
+  });
+
+  it('rejects unknown plaintext nested in traveler-bound objects while allowing vault references and field metadata', () => {
+    expect(() => assertDurablePayloadSafe({ traveler: { profile: { preferredAlias: 'Alice' } } })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: 'vault-ref-1', allowedFields: ['preferredAlias'] } })).not.toThrow();
+  });
+
+  it('reclaims the raced row identity after an external-event insert conflict', async () => {
+    const updatedEventIds: string[] = [];
+    let selectCount = 0;
+    const selectQuery = () => {
+      const query: any = {
+        select: () => query,
+        where: () => query,
+        executeTakeFirst: async () => ++selectCount === 1 ? undefined : { event_id: 'original-event', claim_owner: 'old-owner', claim_until: '2026-08-30T00:00:00.000Z', delivered_at: null },
+      };
+      return query;
+    };
+    const updateQuery = () => {
+      const query: any = {
+        set: () => query,
+        where: (column: unknown, _operator?: unknown, value?: unknown) => { if (column === 'event_id') updatedEventIds.push(String(value)); return query; },
+        returning: () => query,
+        executeTakeFirst: async () => updatedEventIds.at(-1) === 'original-event' ? { event_id: 'original-event' } : undefined,
+      };
+      return query;
+    };
+    const db = {
+      selectFrom: selectQuery,
+      insertInto: () => { const query: any = { values: () => query, execute: async () => { throw new Error('external event conflict'); } }; return query; },
+      updateTable: updateQuery,
+    } as any;
+    const inbox = new InboxRepository(db);
+
+    await expect(inbox.claim('consumer-1', 'new-event', 'new-owner', new Date('2026-08-30T00:00:11.000Z'), 30, 'external-1')).resolves.toBe('claimed');
+    expect(updatedEventIds).toContain('original-event');
+  });
+
+  it('resolves webhook order identity and writes the receipt/task through the same transaction handle', async () => {
+    const txOperations: string[] = [];
+    const supplierSelect = { select: () => supplierSelect, where: () => supplierSelect, execute: async () => [{ id: 'local-order-1', payload_json: JSON.stringify({ supplierOrderRef: { supplierId: 'mock-rail', supplierOrderId: 'supplier-order-1' } }) }] };
+    const taskSelect = { select: () => taskSelect, where: () => taskSelect, executeTakeFirst: async () => ({ kind: 'webhook_update', payload_json: '{"externalEventId":"external-1","orderId":"local-order-1","orderRef":{"supplierId":"mock-rail","supplierOrderId":"supplier-order-1"},"source":"webhook","supplierId":"mock-rail"}' }) };
+    const tx = {
+      selectFrom: (table: string) => { txOperations.push(`select:${table}`); return table === 'supplier_orders' ? supplierSelect : taskSelect; },
+      insertInto: (table: string) => {
+        txOperations.push(`insert:${table}`);
+        const query: any = { values: () => query, onConflict: () => query, returning: () => query, execute: async () => undefined, executeTakeFirst: async () => ({ external_event_id: 'external-1' }) };
+        return query;
+      },
+    };
+    const db = {
+      selectFrom: () => { throw new Error('lookup escaped transaction'); },
+      transaction: () => ({ execute: (callback: (connection: unknown) => unknown) => callback(tx) }),
+    } as any;
+    const repository = new WebhookRepository(db);
+
+    await expect(repository.accept({
+      supplierId: 'mock-rail', externalEventId: 'external-1', orderRef: { supplierId: 'mock-rail', supplierOrderId: 'supplier-order-1' },
+      payloadHash: 'hash', taskId: 'webhook:mock-rail:external-1', taskPayload: { supplierId: 'mock-rail', externalEventId: 'external-1', orderRef: { supplierId: 'mock-rail', supplierOrderId: 'supplier-order-1' }, source: 'webhook' },
+    })).resolves.toBe(true);
+    expect(txOperations).toEqual(['select:supplier_orders', 'insert:webhook_receipts', 'insert:tasks', 'select:tasks']);
   });
 
   it('converts a legacy redacted outbox payload into an EventEnvelope', () => {

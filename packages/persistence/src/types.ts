@@ -256,21 +256,39 @@ const SENSITIVE_PAYLOAD_KEYS = new Set([
   'travelerplaintext',
 ]);
 
+const SAFE_TRAVELER_METADATA_KEYS = new Set([
+  'allowedfields',
+  'grantid',
+  'purpose',
+  'travelerdatagrantid',
+  'travelercount',
+  'travelerids',
+  'travelervaultref',
+  'travelerref',
+  'authorizationref',
+]);
+
 function normalizedPayloadKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-export function assertDurablePayloadSafe(value: unknown, path = 'payload'): void {
+export function assertDurablePayloadSafe(value: unknown, path = 'payload', travelerContext = false): void {
   if (Array.isArray(value)) {
-    value.forEach((item, index) => assertDurablePayloadSafe(item, `${path}[${index}]`));
+    value.forEach((item, index) => assertDurablePayloadSafe(item, `${path}[${index}]`, travelerContext));
     return;
   }
   if (!value || typeof value !== 'object') return;
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-    if (SENSITIVE_PAYLOAD_KEYS.has(normalizedPayloadKey(key))) {
+    const normalizedKey = normalizedPayloadKey(key);
+    if (SENSITIVE_PAYLOAD_KEYS.has(normalizedKey)) {
       throw new TypeError(`sensitive payload field is not allowed: ${path}.${key}`);
     }
-    assertDurablePayloadSafe(item, `${path}.${key}`);
+    if (travelerContext && !SAFE_TRAVELER_METADATA_KEYS.has(normalizedKey)) {
+      throw new TypeError(`traveler plaintext is not allowed: ${path}.${key}`);
+    }
+    const nestedTravelerContext = !SAFE_TRAVELER_METADATA_KEYS.has(normalizedKey)
+      && /(traveler|passenger|guest|customer)/.test(normalizedKey);
+    assertDurablePayloadSafe(item, `${path}.${key}`, travelerContext || nestedTravelerContext);
   }
 }
 

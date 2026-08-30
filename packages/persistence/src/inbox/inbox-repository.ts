@@ -14,6 +14,7 @@ export class InboxRepository {
       .where(eb => externalEventId ? eb.or([eb('event_id', '=', eventId), eb('external_event_id', '=', externalEventId)]) : eb('event_id', '=', eventId)).executeTakeFirst();
     if (existing?.delivered_at) return 'completed';
     if (existing && existing.claim_until && existing.claim_until > now && existing.claim_owner !== owner) return 'busy';
+    let racedEventId: string | undefined;
     if (!existing) {
       try {
         await this.db.insertInto('inbox_messages').values({ consumer_name: consumerName, event_id: eventId, external_event_id: externalEventId ?? null, processed_at: now, claim_owner: owner, claim_until: until, delivered_at: null }).execute();
@@ -23,10 +24,11 @@ export class InboxRepository {
           .where(eb => externalEventId ? eb.or([eb('event_id', '=', eventId), eb('external_event_id', '=', externalEventId)]) : eb('event_id', '=', eventId)).executeTakeFirst();
         if (raced?.delivered_at) return 'completed';
         if (raced?.claim_until && raced.claim_until > now && raced.claim_owner !== owner) return 'busy';
+        racedEventId = raced?.event_id;
       }
     }
     const updated = await this.db.updateTable('inbox_messages').set({ claim_owner: owner, claim_until: until, processed_at: now })
-      .where('consumer_name', '=', consumerName).where('event_id', '=', existing?.event_id ?? eventId).where('delivered_at', 'is', null)
+      .where('consumer_name', '=', consumerName).where('event_id', '=', existing?.event_id ?? racedEventId ?? eventId).where('delivered_at', 'is', null)
       .where(eb => eb.or([eb('claim_until', 'is', null), eb('claim_until', '<=', now), eb('claim_owner', '=', owner)]))
       .returning('event_id').executeTakeFirst();
     return updated ? 'claimed' : 'busy';
