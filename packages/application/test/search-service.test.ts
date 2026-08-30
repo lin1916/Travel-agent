@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SearchRequest } from '@travel/contracts';
 import { MockDiningAdapter, MockTransportAdapter } from '@travel/supplier-adapters';
+import { canonicalRequestJson } from '@travel/persistence';
 import { InMemorySearchTaskQueue, SearchService } from '../src/search/search-service.js';
 
 const base: Omit<SearchRequest, 'kind'> = {
@@ -63,6 +64,23 @@ describe('SearchService', () => {
     const second = await service.search(input);
     expect(first.taskId).toBe(second.taskId);
     expect(queue.tasks.size).toBe(1);
+  });
+
+  it('omits undefined optional fields from a durable long-search payload', async () => {
+    let payload: unknown;
+    const queue = {
+      enqueue: async (input: { payload: unknown }) => {
+        payload = input.payload;
+        canonicalRequestJson(input.payload);
+      },
+    };
+    const service = new SearchService({ train: new MockTransportAdapter() }, queue);
+    const requestWithoutEnd = { ...base, kind: 'train' as const };
+    delete requestWithoutEnd.endsAt;
+    await service.search({ requests: [requestWithoutEnd, requestWithoutEnd, requestWithoutEnd, requestWithoutEnd] });
+    const requests = (payload as { requests: Array<Record<string, unknown>> }).requests;
+    expect(requests[0]).toMatchObject({ tripId: 'trip-1', kind: 'train' });
+    expect(requests[0]).not.toHaveProperty('endsAt');
   });
 
   it('normalizes search request timestamps to China Standard Time', async () => {

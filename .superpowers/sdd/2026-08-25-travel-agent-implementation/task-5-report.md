@@ -91,3 +91,20 @@ Addressed the two remaining review findings:
 - `pnpm --filter @travel/application test -- search-service.test.ts` -> 10 tests passed.
 - `pnpm --filter @travel/persistence test -- repositories.integration.test.ts` -> 3 unit tests passed; 4 PostgreSQL integration tests skipped without `DATABASE_URL`.
 - `pnpm --filter @travel/api test -- search.e2e-spec.ts` -> 9 tests passed.
+
+## Repair Round 3 (2026-08-30)
+
+Fixed the long-search payload regression where an omitted optional `endsAt` was materialized as `undefined` and rejected by canonical JSON serialization. Normalized request construction now adds `endsAt` only when explicitly present, preserving deterministic omitted-versus-explicit semantics and prior queue replay/conflict behavior.
+
+### Repair TDD Evidence
+
+- Red: the new application test failed with `idempotency requests must be JSON values` from `canonicalRequestJson` when a valid four-category request omitted `endsAt`.
+- Green: the same test passed after removing the undefined optional property from the queued payload.
+
+### Repair Verification
+
+- `pnpm --filter @travel/supplier-adapters test -- adapter-contract.test.ts` -> 15 tests passed.
+- `pnpm --filter @travel/application test -- search-service.test.ts` -> 11 tests passed.
+- `pnpm --filter @travel/persistence test -- repositories.integration.test.ts` -> 3 unit tests passed; PostgreSQL integration tests skipped without `DATABASE_URL`.
+- `pnpm --filter @travel/api test -- search.e2e-spec.ts` -> 9 tests passed.
+- Root `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm build`, and `git diff --check` -> passed.

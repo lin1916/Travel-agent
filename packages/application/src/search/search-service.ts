@@ -20,7 +20,9 @@ export class SearchService {
   async search(input: SearchServiceInput | SearchRequest[]): Promise<SearchServiceResult> {
     const requests = (Array.isArray(input) ? input : input.requests).map(request => {
       const parsed = SearchRequestSchema.parse(request);
-      return { ...parsed, startsAt: normalizeChinaStandardTime(parsed.startsAt), endsAt: parsed.endsAt ? normalizeChinaStandardTime(parsed.endsAt) : undefined };
+      const normalized = { ...parsed, startsAt: normalizeChinaStandardTime(parsed.startsAt) };
+      if (parsed.endsAt !== undefined) normalized.endsAt = normalizeChinaStandardTime(parsed.endsAt);
+      return normalized;
     });
     const mode = Array.isArray(input) ? 'value' : input.mode ?? 'value';
     if (requests.length >= 4 && this.taskQueue) {
