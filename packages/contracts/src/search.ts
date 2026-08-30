@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { Money, MoneySchema, OfferKind, OfferKindSchema } from './money.js';
 
 export interface SearchRequest { tripId: string; kind: OfferKind; origin?: string; destination: string; startsAt: string; endsAt?: string; travelers: number; budgetLimit?: Money }
-export const SearchRequestSchema = z.object({ tripId: z.string().min(1), kind: OfferKindSchema, origin: z.string().optional(), destination: z.string().min(1), startsAt: z.string(), endsAt: z.string().optional(), travelers: z.number().int().min(1).max(6), budgetLimit: MoneySchema.optional() });
+const timezonedIso = z.string().refine(value => /(Z|[+-]\d{2}:\d{2})$/.test(value), 'timestamp must include an explicit timezone');
+export const SearchRequestSchema = z.object({ tripId: z.string().min(1), kind: OfferKindSchema, origin: z.string().optional(), destination: z.string().min(1), startsAt: timezonedIso, endsAt: timezonedIso.optional(), travelers: z.number().int().min(1).max(6), budgetLimit: MoneySchema.optional() });
 export interface RevalidateRequest { supplierId: string; offerSnapshotHash: string; offerId: string }
 export interface RevalidatedOffer { offerId: string; snapshotHash: string; price: Money; inventoryAvailable: boolean; refundRulesHash: string }
 export interface SupplierOffer { id: string; kind: OfferKind; supplierId: string; price: Money; snapshotHash: string; startsAt?: string; endsAt?: string; title?: string }

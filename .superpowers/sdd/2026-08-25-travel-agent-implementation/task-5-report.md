@@ -44,5 +44,30 @@ Immediately after writing the adapter tests, `pnpm --filter @travel/supplier-ada
 ## Residual Concerns
 
 - Search results are currently mock-only by design; no real suppliers, payments, or credentials are integrated.
-- The API currently executes the bounded mock search inline; a durable queue path for genuinely long-running searches remains a later task.
+- The API executes short searches inline and uses the existing task boundary for deterministic four-category queued searches; a worker that consumes search tasks remains outside this repair round.
 - Offer persistence has the migration/schema boundary, but search-result repository writes are intentionally deferred to keep Task 5 within the brief.
+
+## Repair Round 1 (2026-08-30)
+
+Addressed the independent review findings:
+
+- Transport now supports both `train` and `flight` requests, with deterministic flight fixture offers and API provider wiring.
+- Searches with four or more category requests use a deterministic queued path (`status: queued`, `taskKind: search`, stable `search-*` task id). PostgreSQL deployments use the existing `TaskRepository`; tests use an in-memory queue only when PostgreSQL is unavailable.
+- The API validates the complete request body with a strict Zod schema before mapping kinds, including null/malformed body handling.
+- Search request and supplier timestamps require explicit timezone information and are normalized to China Standard Time (`+08:00`).
+- Fault-mode tests now cover all four adapters; out-of-order webhooks emit a confirmed event followed by a deterministic lifecycle regression event, while prompt-injection text remains inert title data.
+
+### Repair TDD Red Evidence
+
+- Flight test initially failed with `adapter kind mismatch: flight`.
+- Queue test initially returned inline offers and did not enqueue.
+- CST test initially observed `2026-08-30T00:00:00.000Z` instead of a `+08:00` timestamp.
+- API malformed-body test initially produced HTTP 500 from `body.kinds` access.
+- API four-category test initially returned HTTP 201 inline instead of HTTP 202 queued.
+
+### Repair Green Evidence
+
+- `pnpm --filter @travel/supplier-adapters test -- adapter-contract.test.ts` -> 14 tests passed.
+- `pnpm --filter @travel/application test -- search-service.test.ts` -> 9 tests passed.
+- `pnpm --filter @travel/api test -- search.e2e-spec.ts` -> 9 tests passed, including existing health/trip suites.
+- `pnpm --filter @travel/application typecheck`, `pnpm --filter @travel/api typecheck`, `pnpm --filter @travel/supplier-adapters typecheck`, and `pnpm --filter @travel/persistence typecheck` -> passed.

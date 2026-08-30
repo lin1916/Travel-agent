@@ -1,10 +1,19 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Inject, Param, Post } from '@nestjs/common';
+import { Body, Controller, Headers, HttpCode, HttpStatus, Inject, Param, Post, Res } from '@nestjs/common';
 import { ApplicationError, type SearchService as SearchApplicationService } from '@travel/application';
-import { SearchRequestSchema, type OfferKind, type SearchRequest } from '@travel/contracts';
+import { MoneySchema, OfferKindSchema, SearchRequestSchema, type OfferKind, type SearchRequest } from '@travel/contracts';
 import { SEARCH_SERVICE } from './search.tokens.js';
 import { TRIP_SERVICE } from '../trips/trip.providers.js';
+import { z } from 'zod';
 
-interface SearchBody { kinds?: OfferKind[]; origin?: string; startsAt?: string; endsAt?: string; travelers?: number; mode?: 'value' | 'cheapest' | 'fastest' | 'comfortable'; budgetLimit?: { amountCents: number; currency: 'CNY' } }
+const SearchBodySchema = z.object({
+  kinds: z.array(OfferKindSchema).min(1).optional(),
+  origin: z.string().min(1).optional(),
+  startsAt: z.string().optional(),
+  endsAt: z.string().optional(),
+  travelers: z.number().int().min(1).max(6).optional(),
+  mode: z.enum(['value', 'cheapest', 'fastest', 'comfortable']).optional(),
+  budgetLimit: MoneySchema.optional(),
+}).strict();
 
 function actorId(value: string | undefined): string {
   if (!value) throw new ApplicationError('unauthorized', 'x-actor-id header is required');
@@ -20,7 +29,10 @@ export class SearchController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async search(@Headers('x-actor-id') actor: string | undefined, @Param('tripId') tripId: string, @Body() body: SearchBody) {
+  async search(@Headers('x-actor-id') actor: string | undefined, @Param('tripId') tripId: string, @Body() rawBody: unknown, @Res({ passthrough: true }) response: { statusCode: number }) {
+    const bodyResult = SearchBodySchema.safeParse(rawBody);
+    if (!bodyResult.success) throw new ApplicationError('validation_error', bodyResult.error.issues[0]?.message ?? 'invalid search request');
+    const body = bodyResult.data;
     const trip = await this.tripService.get(tripId, actorId(actor));
     const kinds = body.kinds?.length ? body.kinds : ['train', 'stay', 'attraction', 'dining'] as OfferKind[];
     const travelers = body.travelers ?? trip.travelerCount;
@@ -30,6 +42,8 @@ export class SearchController {
       if (!parsed.success) throw new ApplicationError('validation_error', parsed.error.issues[0]?.message ?? 'invalid search request');
       return parsed.data;
     });
-    return this.searchService.search({ requests, mode: body.mode });
+    const result = await this.searchService.search({ requests, mode: body.mode });
+    if (result.status === 'queued') response.statusCode = HttpStatus.ACCEPTED;
+    return result;
   }
 }

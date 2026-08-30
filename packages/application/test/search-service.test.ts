@@ -39,4 +39,28 @@ describe('SearchService', () => {
       reasons: expect.arrayContaining([expect.any(String)]),
     });
   });
+
+  it('queues deterministic long searches through the durable task boundary', async () => {
+    const enqueued: Array<{ id: string; kind: string; payload: unknown }> = [];
+    const service = new SearchService({ train: new MockTransportAdapter() }, {
+      enqueue: async input => { enqueued.push(input); },
+    });
+    const result = await service.search({ requests: [
+      { ...base, kind: 'train' }, { ...base, kind: 'train' }, { ...base, kind: 'train' }, { ...base, kind: 'train' },
+    ] });
+    expect(result).toMatchObject({ status: 'queued', taskId: expect.stringMatching(/^search-/) });
+    expect(enqueued).toHaveLength(1);
+    expect(enqueued[0].kind).toBe('search');
+  });
+
+  it('normalizes search request timestamps to China Standard Time', async () => {
+    const seen: string[] = [];
+    const adapter = new MockTransportAdapter();
+    const originalSearch = adapter.search.bind(adapter);
+    adapter.search = async request => { seen.push(request.startsAt); return originalSearch(request); };
+    const service = new SearchService({ train: adapter });
+    const result = await service.search({ requests: [{ ...base, kind: 'train', startsAt: '2026-09-01T01:00:00.000Z' }] });
+    expect(result.categories.train?.updatedAt).toMatch(/\+08:00$/);
+    expect(seen[0]).toBe('2026-09-01T09:00:00.000+08:00');
+  });
 });

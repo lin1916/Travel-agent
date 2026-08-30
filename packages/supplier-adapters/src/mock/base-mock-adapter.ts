@@ -17,7 +17,7 @@ interface RawOffer {
   refundSummary: string;
 }
 
-const UPDATED_AT = '2026-08-30T00:00:00.000Z';
+const UPDATED_AT = '2026-08-30T08:00:00.000+08:00';
 
 export abstract class BaseMockAdapter implements SupplierAdapter {
   abstract readonly kind: SearchRequest['kind'];
@@ -29,17 +29,23 @@ export abstract class BaseMockAdapter implements SupplierAdapter {
   }
 
   protected readonly faultMode: FaultMode;
+  private webhookCalls = 0;
 
   async search(input: SearchRequest): Promise<OfferPage> {
-    if (input.kind !== this.kind) throw new SupplierAdapterError(`adapter kind mismatch: ${input.kind}`, false);
+    if (!this.supportsKind(input.kind)) throw new SupplierAdapterError(`adapter kind mismatch: ${input.kind}`, false);
     if (this.faultMode === 'delayed') await new Promise(resolve => setTimeout(resolve, 15));
     if (this.faultMode === 'inventory_lost') throw new SupplierAdapterError('inventory lost');
-    if (this.faultMode === 'expired_offer') return this.page('2026-01-01T00:00:00.000Z');
-    return this.page(UPDATED_AT);
+    if (this.faultMode === 'expired_offer') return this.page('2026-01-01T08:00:00.000+08:00', input.kind);
+    return this.page(UPDATED_AT, input.kind);
   }
 
-  protected page(updatedAt: string): OfferPage {
-    const offers = this.fixture.map(raw => this.normalize(raw, updatedAt, this.faultMode === 'prompt_injection_text'));
+  protected supportsKind(kind: SearchRequest['kind']): boolean {
+    return kind === this.kind;
+  }
+
+  protected page(updatedAt: string, kind: SearchRequest['kind']): OfferPage {
+    const candidates = this.fixture.filter(raw => raw.kind === kind);
+    const offers = candidates.map(raw => this.normalize(raw, updatedAt, this.faultMode === 'prompt_injection_text'));
     return { offers, source: this.supplierId, updatedAt };
   }
 
@@ -92,8 +98,11 @@ export abstract class BaseMockAdapter implements SupplierAdapter {
   }
 
   async parseWebhook(_input: SupplierWebhook): Promise<SupplierOrderUpdate> {
-    const lifecycleStatus: SupplierOrderLifecycle = this.faultMode === 'out_of_order_webhook' ? 'awaiting_payment' : 'confirmed';
-    return { externalEventId: this.faultMode === 'duplicate_webhook' ? 'duplicate-event-1' : 'event-1', orderRef: { supplierId: this.supplierId, supplierOrderId: `${this.supplierId}-order-001` }, lifecycleStatus, paymentVerified: lifecycleStatus === 'confirmed' };
+    this.webhookCalls += 1;
+    const outOfOrder = this.faultMode === 'out_of_order_webhook' && this.webhookCalls > 1;
+    const lifecycleStatus: SupplierOrderLifecycle = outOfOrder ? 'awaiting_payment' : 'confirmed';
+    const externalEventId = this.faultMode === 'duplicate_webhook' ? 'duplicate-event-1' : `event-${this.webhookCalls}`;
+    return { externalEventId, orderRef: { supplierId: this.supplierId, supplierOrderId: `${this.supplierId}-order-001` }, lifecycleStatus, paymentVerified: lifecycleStatus === 'confirmed' };
   }
 }
 
