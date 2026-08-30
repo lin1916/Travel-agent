@@ -50,8 +50,8 @@ export class ApiClient {
     return this.request<SearchResult>(`/v1/trips/${encodeURIComponent(tripId)}/searches`, { method: 'POST', body: JSON.stringify({ kinds: [input.kind], startsAt: input.startsAt, endsAt: input.endsAt, travelers: input.travelers, mode: 'value' }), signal }, actorId);
   }
 
-  startAgent(input: { tripId: string; userMessage: string }, signal?: AbortSignal) {
-    return this.request<AgentRunSummary>('/v1/agent/runs', { method: 'POST', body: JSON.stringify(input), signal });
+  startAgent(input: { tripId: string; userMessage: string }, actorId: string, signal?: AbortSignal) {
+    return this.request<AgentRunSummary>('/v1/agent/runs', { method: 'POST', body: JSON.stringify(input), signal }, actorId);
   }
 
   getItinerary(tripId: string, actorId: string, signal?: AbortSignal) {

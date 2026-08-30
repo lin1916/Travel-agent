@@ -22,9 +22,10 @@ export function PlannerRoute() {
       const results = await Promise.allSettled(categories.map(kind => client.search(trip.id, { kind, startsAt, endsAt, travelers }, actorId)));
       const offers: WorkspaceData['offers'] = {}; const ranked: WorkspaceData['ranked'] = {}; const categoryInfo: WorkspaceData['categories'] = {};
       results.forEach((result, index) => { const kind = categories[index]; if (result.status === 'fulfilled') { const value: SearchResult = result.value; offers[kind] = value.offers[kind] ?? []; ranked[kind] = value.ranked[kind] ?? []; categoryInfo[kind] = value.categories[kind] ?? { retryable: false }; } else { categoryInfo[kind] = { warning: result.reason instanceof Error ? result.reason.message : '暂时无法获取', retryable: true }; } });
+      const itinerary = await client.getItinerary(trip.id, actorId).catch(() => undefined);
       let run: AgentRunSummary | undefined;
-      try { run = await client.startAgent({ tripId: trip.id, userMessage: `计划去${destination}，${form.get('startsAt')}到${form.get('endsAt')}，${travelers}人` }); } catch (agentError) { if (agentError instanceof PublicApiError) setError(agentError.message); }
-      setWorkspace({ destination, tripId: trip.id, offers, ranked, categories: categoryInfo, run, totalBudgetCents });
+      try { run = await client.startAgent({ tripId: trip.id, userMessage: `计划去${destination}，${form.get('startsAt')}到${form.get('endsAt')}，${travelers}人` }, actorId); } catch (agentError) { if (agentError instanceof PublicApiError) setError(agentError.message); }
+      setWorkspace({ destination, tripId: trip.id, offers, ranked, categories: categoryInfo, run, itinerary, totalBudgetCents });
     } catch (requestError) { setError(requestError instanceof PublicApiError ? requestError.message : '暂时无法开始规划，请稍后重试。'); } finally { setLoading(false); }
   }
   if (workspace) return <TripWorkspace data={workspace} />;

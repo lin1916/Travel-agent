@@ -34,3 +34,41 @@
 
 - The repository does not yet expose the future SSE event endpoint planned for Task 11, so the typed SSE client is ready for that endpoint but is not subscribed by this Task 7 route.
 - Playwright uses `channel: 'chrome'` to use a locally installed stable browser rather than hard-coding a machine path or depending on the unavailable Playwright-managed Chromium download.
+
+## Fix Round 1: Review Findings
+
+### Changes
+
+- Switched Playwright's Web server from Vite development mode to `build` plus `vite preview`, and configured the same `/api` proxy for both Vite development and preview modes.
+- Added bounded, abortable SSE reconnects. The cursor is kept only in memory and updates from each received SSE event ID before the next request supplies it as `Last-Event-ID`.
+- Added a truthful `供应商模式：Mock/Sandbox` workspace section. It states that anonymous users can compare Mock/Sandbox results but cannot book or pay from this workspace.
+- Loaded the itinerary after search with a non-fatal failure path, so successful category results remain visible and real itinerary warnings reach `ItineraryList`.
+- Passed the same in-memory anonymous actor ID to Agent-run creation as Trip creation, preserving owner binding.
+- Added a Vitest configuration that scopes the unit runner to Web source tests rather than collecting Playwright specs.
+
+### Covering Tests and Commands
+
+Red phase:
+
+- `pnpm --filter @travel/web test -- sse-client.test.ts`
+  - Output: `expected "spy" to be called 2 times, but got 1 times`.
+- `pnpm --filter @travel/web test:e2e -- planner.spec.ts`
+  - Output: both desktop and mobile failed because `提醒：相邻安排的换乘时间较紧。` was absent.
+
+Green phase:
+
+- `pnpm --filter @travel/web test -- sse-client.test.ts`
+  - Output: `1 passed`.
+- `pnpm --filter @travel/web test:e2e -- planner.spec.ts`
+  - Output: `2 passed` under the configuration that logs `vite build` and starts `vite preview`; desktop is 1440x900 and mobile is 390x844.
+  - Browser assertions cover API-backed preview behavior, itinerary-warning rendering, Mock/Sandbox supplier mode, matching Trip/Agent anonymous actor headers, and no horizontal overflow.
+- `pnpm --filter @travel/web test`
+  - Output: `1 passed`.
+- `pnpm --filter @travel/web lint`
+  - Output: exit 0.
+- `pnpm --filter @travel/web typecheck`
+  - Output: exit 0.
+- `pnpm --filter @travel/web build`
+  - Output: Vite built 37 modules successfully.
+- `git diff --check`
+  - Output: exit 0.
