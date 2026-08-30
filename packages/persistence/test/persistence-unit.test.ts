@@ -6,6 +6,7 @@ import {
   eventToRow,
   DatabaseConfigurationError,
 } from '../src/types.js';
+import { ActionRequestRepository } from '../src/repositories/action-request-repository.js';
 
 describe('persistence boundary helpers', () => {
   it('fails closed when PostgreSQL configuration is absent', () => {
@@ -37,5 +38,11 @@ describe('persistence boundary helpers', () => {
       '{"traveler":{"fields":["name","phone"],"id":"traveler-1"},"tripId":"trip-1"}',
     );
     expect(canonicalRequestHash(reordered)).toBe(canonicalRequestHash(first));
+  });
+
+  it('raises a conflict when action request optimistic update affects zero rows', async () => {
+    const db = { updateTable: () => ({ set: () => ({ where: () => ({ where: () => ({ executeTakeFirst: async () => ({ numUpdatedRows: 0 }) }) }) }) }) } as any;
+    const repository = new ActionRequestRepository(db);
+    await expect(repository.save({ id: 'ar', tripId: 't', resourceId: 'r', kind: 'booking', risk: 'commit', status: 'approved', reasons: [], expiresAt: new Date().toISOString(), version: 2, ownerId: 'o', requestHash: 'h', correlationId: 'c' })).rejects.toThrow(/conflict/i);
   });
 });

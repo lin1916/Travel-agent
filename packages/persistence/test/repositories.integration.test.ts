@@ -6,6 +6,7 @@ import { TaskRepository } from '../src/repositories/task-repository.js';
 import { TripRepository } from '../src/repositories/trip-repository.js';
 import { RepositoryConflictError } from '../src/types.js';
 import { withTransaction } from '../src/db.js';
+import { ActionRequestRepository } from '../src/repositories/action-request-repository.js';
 
 const hasDatabase = Boolean(process.env.DATABASE_URL);
 const suite = hasDatabase ? describe : describe.skip;
@@ -126,5 +127,10 @@ suite('PostgreSQL repositories', () => {
         .where('event_id', '=', tripId + '-event')
         .executeTakeFirst(),
     ).toBeUndefined();
+  });
+
+  it('rejects an optimistic action-request save when no row was updated', async () => {
+    const repository = new ActionRequestRepository({ updateTable: () => ({ set: () => ({ where: () => ({ where: () => ({ execute: async () => [] }) }) }) }) } as any);
+    await expect(repository.save({ id: 'ar', tripId: 't', resourceId: 'r', kind: 'booking', risk: 'commit', status: 'approved', reasons: [], expiresAt: new Date().toISOString(), version: 2, ownerId: 'o', requestHash: 'h', correlationId: 'c' })).rejects.toThrow(/conflict/i);
   });
 });

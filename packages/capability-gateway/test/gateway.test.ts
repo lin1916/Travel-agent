@@ -65,4 +65,12 @@ describe('CapabilityGateway', () => {
     const authenticated = { ...context, requestedRisk: 'commit' as const, actorAuthenticated: true };
     await expect(new CapabilityGateway([commitTool]).execute(commitTool.name, authenticated, { value: 'x' })).rejects.toMatchObject({ code: 'policy_blocked' });
   });
+
+  it('consumes the approved command binding exactly once before the side effect', async () => {
+    let consumed = 0;
+    const tool: CapabilityTool<{ value: string }, string> = { name: 'bound-commit', risk: 'commit', inputSchema: z.object({ value: z.string() }), execute: async () => 'ok' };
+    const gateway = new CapabilityGateway([tool], undefined, async () => ({ allowed: true, consume: async () => { consumed += 1; } }));
+    await gateway.execute(tool.name, { ...context, requestedRisk: 'commit', actorAuthenticated: true, actionRequestId: 'ar-1', mandateId: 'm-1' }, { value: 'x' });
+    expect(consumed).toBe(1);
+  });
 });

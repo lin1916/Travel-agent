@@ -8,3 +8,4 @@ export * from './search/normalizer.js';
 export * from './search/ranker.js';
 export * from './action-requests/action-request-service.js';
 export { MandateStore } from '@travel/domain';
+export { evaluateExecutionPolicy } from '@travel/domain';

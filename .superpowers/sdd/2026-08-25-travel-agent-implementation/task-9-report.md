@@ -47,3 +47,15 @@ Remaining concerns:
 
 - PostgreSQL integration tests remain skipped when `DATABASE_URL` is unset; repository SQL paths were typechecked but not exercised against a live PostgreSQL instance.
 - Gateway production evaluator currently enforces presence of `mandateId` and `actionRequestId`; full mandate lookup and one-time decision consumption should be connected when booking side-effect tools are introduced.
+
+## Fix round 2
+
+- Added RED regressions for evaluator-driven one-time consumption and optimistic repository conflicts.
+- Gateway execution-policy results now carry a required `consume` callback for commit/redirect tools; the callback runs exactly once immediately before the tool side effect.
+- AgentModule now loads the current Mandate and approved ActionRequest, re-evaluates the command with stored execution facts and policy snapshot, and returns a bound consume callback using kind/resource/request hash/version.
+- `MandateRepository.listByTrip` now returns only the latest version per mandate, matching the in-memory/API semantics.
+- `ActionRequestRepository.save` checks affected-row count and raises a version conflict when a concurrent update wins.
+
+Fix-round 2 tests: `pnpm --filter @travel/capability-gateway test -- gateway.test.ts` (6 passed); `pnpm --filter @travel/persistence test -- persistence-unit.test.ts` (8 passed, 7 integration skipped); `pnpm --filter @travel/api test -- agent-execution-policy.test.ts` (6 files, 24 passed); domain/application focused suites remained green. API, application, domain, Gateway, and persistence typechecks/builds plus lint passed.
+
+Remaining concern: live PostgreSQL integration remains unexecuted because `DATABASE_URL` is not configured in this environment.
