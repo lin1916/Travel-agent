@@ -58,3 +58,28 @@ The resumed worktree already contained the partial crypto/Vault/grant implementa
 - PostgreSQL Vault integration tests are conditional on VAULT_DATABASE_URL and were skipped in this environment; run them against the isolated Vault database in CI or staging.
 - Internal Vault HTTP endpoints are intended for a private service boundary; deployment should enforce network/service authentication before production exposure.
 - API TravelerVaultRef deletion is conservative: deleting one field marks the reference deleted, preventing further grants until the reference is recreated.
+
+## Security hardening follow-up (review findings)
+
+Implemented and verified all four review findings in a follow-up commit:
+
+- Added fail-closed InternalServiceAuthGuard for every Vault and grant internal route. Requests require VAULT_INTERNAL_SERVICE_TOKEN; owner identity is read from the authenticated service header and body ownerId values are ignored. Vault now defaults to 127.0.0.1 binding (override only with explicit VAULT_BIND_HOST).
+- Persisted grant owner_id and enforced owner matching atomically during revoke. API VaultHttpClient now sends service and owner headers; Vault controllers pass the authenticated owner to grant and field operations.
+- Restricted DevIdentityProvider and EnvironmentKeyProvider local mode to NODE_ENV=development or test; staging/other environments fail closed.
+- Enforced retentionUntil as a read deadline in VaultService; expired records cannot be decrypted or returned.
+
+TDD RED/GREEN evidence:
+
+- RED: security staging test failed because local KMS accepted NODE_ENV=staging; API staging test failed because DevIdentityProvider accepted staging; Vault retention test resolved plaintext instead of rejecting; owner revoke test resolved instead of rejecting; internal auth test could not import the missing module.
+- GREEN: after implementation, the focused suites passed with the counts below.
+
+Follow-up verification commands and exact results:
+
+- pnpm --filter @travel/security test — 1 file, 5 tests passed.
+- pnpm --filter @travel/vault test — 3 files, 19 passed, 2 PostgreSQL tests skipped (VAULT_DATABASE_URL unavailable).
+- pnpm --filter @travel/api exec vitest run test/travelers.e2e-spec.ts — 1 file, 10 tests passed.
+- pnpm typecheck — Turbo: 13/13 tasks successful.
+- pnpm build — Turbo build completed successfully for all workspace packages.
+- pnpm lint — Turbo: 13/13 tasks successful.
+- pnpm security:scan-sensitive-output — no matches emitted.
+- git diff --check — no whitespace errors; only normal CRLF conversion warnings.

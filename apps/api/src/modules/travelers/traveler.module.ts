@@ -21,11 +21,17 @@ export {
 class VaultHttpClient implements TravelerVaultClient {
   constructor(private readonly baseUrl: string | undefined) {}
 
-  private async post(path: string, body: unknown, method = 'POST'): Promise<unknown> {
+  private async post(path: string, body: unknown, method = 'POST', ownerId?: string): Promise<unknown> {
     if (!this.baseUrl) throw new ServiceUnavailableException('traveler vault is unavailable');
+    const serviceToken = process.env.VAULT_INTERNAL_SERVICE_TOKEN;
+    if (!serviceToken) throw new ServiceUnavailableException('traveler vault is unavailable');
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'x-vault-service-token': serviceToken,
+        ...(ownerId ? { 'x-vault-owner-id': ownerId } : {}),
+      },
       body: JSON.stringify(body),
     });
     if (!response.ok) throw new ServiceUnavailableException('traveler vault is unavailable');
@@ -34,27 +40,27 @@ class VaultHttpClient implements TravelerVaultClient {
 
   async storeFields(actorId: string, input: { travelerId: string; fields: Record<string, string>; retentionUntil: string }) {
     await this.post(`/internal/v1/vault/travelers/${encodeURIComponent(input.travelerId)}/fields`, {
-      ownerId: actorId, fields: input.fields, retentionUntil: input.retentionUntil,
-    });
+      fields: input.fields, retentionUntil: input.retentionUntil,
+    }, 'POST', actorId);
     return { travelerId: input.travelerId, fieldNames: Object.keys(input.fields), retentionUntil: input.retentionUntil };
   }
 
   async deleteField(actorId: string, travelerId: string, fieldName: string) {
     await this.post(`/internal/v1/vault/travelers/${encodeURIComponent(travelerId)}/fields/${encodeURIComponent(fieldName)}`, {
-      ownerId: actorId, deletedAt: new Date().toISOString(),
-    }, 'DELETE');
+      deletedAt: new Date().toISOString(),
+    }, 'DELETE', actorId);
     return { deleted: true };
   }
 
-  async issueGrant(_actorId: string, input: GrantIssueInput) {
-    return await this.post('/internal/v1/traveler-data-grants', input) as { id: string; intentId: string; expiresAt: string };
+  async issueGrant(actorId: string, input: GrantIssueInput) {
+    return await this.post('/internal/v1/traveler-data-grants', input, 'POST', actorId) as { id: string; intentId: string; expiresAt: string };
   }
 
-  async revokeGrant(_actorId: string, input: { id: string; intentId: string; expiresAt: string; reason: string }) {
+  async revokeGrant(actorId: string, input: { id: string; intentId: string; expiresAt: string; reason: string }) {
     const { id, ...body } = input;
     await this.post(`/internal/v1/traveler-data-grants/${encodeURIComponent(id)}/revoke`, {
       ref: { intentId: body.intentId, expiresAt: body.expiresAt }, reason: body.reason,
-    });
+    }, 'POST', actorId);
     return { revoked: true };
   }
 }

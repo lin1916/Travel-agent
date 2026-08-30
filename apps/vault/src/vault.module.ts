@@ -12,6 +12,7 @@ import {
 } from './modules/vault/vault.repository.js';
 import { VaultService } from './modules/vault/vault.service.js';
 import type { Kysely } from 'kysely';
+import { InternalServiceAuthGuard, createInternalServiceAuthenticator } from './internal-auth.js';
 
 interface VaultRuntimeDependencies {
   database: Kysely<VaultDatabase>;
@@ -49,6 +50,10 @@ class VaultShutdown implements OnApplicationShutdown {
 @Module({
   controllers: [VaultController, GrantController],
   providers: [
+    {
+      provide: InternalServiceAuthGuard,
+      useFactory: () => new InternalServiceAuthGuard(createInternalServiceAuthenticator(process.env)),
+    },
     {
       provide: VAULT_RUNTIME,
       useFactory: async () => {

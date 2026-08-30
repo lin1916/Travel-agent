@@ -18,6 +18,7 @@ export interface TravelerFieldsTable {
 
 export interface TravelerDataGrantsTable {
   id: string;
+  owner_id: string;
   intent_id: string;
   intent_version: number;
   supplier_legal_entity: string;
@@ -71,6 +72,7 @@ export async function migrateVaultSchema(db: Kysely<VaultDatabase>): Promise<voi
     .on('traveler_fields').column('owner_id').execute();
   await schema.createTable('traveler_data_grants').ifNotExists()
     .addColumn('id', 'varchar(128)', col => col.primaryKey())
+    .addColumn('owner_id', 'varchar(128)', col => col.notNull())
     .addColumn('intent_id', 'varchar(128)', col => col.notNull())
     .addColumn('intent_version', 'integer', col => col.notNull())
     .addColumn('supplier_legal_entity', 'varchar(256)', col => col.notNull())
@@ -88,6 +90,9 @@ export async function migrateVaultSchema(db: Kysely<VaultDatabase>): Promise<voi
     .execute();
   await schema.createIndex('traveler_data_grants_expiry_idx').ifNotExists()
     .on('traveler_data_grants').column('expires_at').execute();
+  await sql.raw('alter table vault.traveler_data_grants add column if not exists owner_id varchar(128)').execute(db);
+  await sql.raw("update vault.traveler_data_grants set owner_id = 'system' where owner_id is null").execute(db);
+  await sql.raw('alter table vault.traveler_data_grants alter column owner_id set not null').execute(db);
 }
 
 export interface VaultFieldRecord extends EncryptedValue {

@@ -19,6 +19,9 @@ export class DevIdentityProvider implements IdentityProvider {
     if (environment.NODE_ENV === 'production') {
       throw new Error('development identity provider is disabled in production');
     }
+    if (environment.NODE_ENV !== 'development' && environment.NODE_ENV !== 'test') {
+      throw new Error('development identity provider is disabled outside development/test');
+    }
     if (!environment.DEV_IDENTITY_CODE || !environment.DEV_IDENTITY_ACTOR_ID) {
       throw new Error('development identity provider is not configured');
     }

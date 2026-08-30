@@ -5,7 +5,7 @@ import { DevIdentityProvider } from './dev-identity-provider.js';
 import { IDENTITY_PROVIDER, UnavailableIdentityProvider, type IdentityProvider } from './identity-provider.js';
 
 function identityProvider(): IdentityProvider {
-  if (process.env.NODE_ENV === 'production'
+  if ((process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test')
     || !process.env.DEV_IDENTITY_CODE
     || !process.env.DEV_IDENTITY_ACTOR_ID) {
     return new UnavailableIdentityProvider();

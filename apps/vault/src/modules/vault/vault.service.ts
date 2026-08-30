@@ -24,6 +24,10 @@ export interface AuthorizedTravelerFields {
   fields: Record<string, string>;
 }
 
+export interface VaultClock {
+  now(): Date;
+}
+
 function assertFieldNames(fieldNames: readonly string[]): void {
   if (fieldNames.length === 0 || fieldNames.some(name => !ALLOWED_TRAVELER_FIELDS.has(name))) {
     throw new Error('traveler field is not allowed');
@@ -38,6 +42,7 @@ export class VaultService {
   constructor(
     private readonly repository: VaultRepository,
     private readonly crypto: EnvelopeCrypto,
+    private readonly clock: VaultClock = { now: () => new Date() },
   ) {}
 
   async storeFields(input: StoreTravelerFieldsInput): Promise<void> {
@@ -80,10 +85,14 @@ export class VaultService {
     try {
       const records = await this.repository.findActiveFields(travelerId, uniqueFields);
       if (records.length !== uniqueFields.length) throw new Error('missing field');
+      const now = this.clock.now().getTime();
       const fields: Record<string, string> = {};
       for (const fieldName of uniqueFields) {
         const record = records.find(item => item.fieldName === fieldName);
         if (!record) throw new Error('missing field');
+        if (Number.isNaN(Date.parse(record.retentionUntil)) || Date.parse(record.retentionUntil) <= now) {
+          throw new Error('retention deadline has passed');
+        }
         const decrypted = await this.crypto.decrypt(record, associatedData(record));
         fields[fieldName] = Buffer.from(decrypted).toString('utf8');
       }

@@ -91,6 +91,17 @@ describe('VaultService', () => {
       .rejects.toThrow('traveler field is not allowed');
   });
 
+  it('rejects reads after the retention deadline', async () => {
+    const { service } = createVault();
+    await service.storeFields({
+      travelerId: 'expired-traveler', ownerId: 'actor-1', retentionUntil: '2020-01-01T00:00:00.000Z',
+      fields: { fullName: 'Expired Traveler' },
+    });
+
+    await expect(service.readAuthorizedFields('expired-traveler', ['fullName']))
+      .rejects.toThrow('authorized traveler fields are unavailable');
+  });
+
   it('fails closed without exposing values when the key provider is unavailable', async () => {
     const { repository, service } = createVault();
     await service.storeFields({ travelerId: 'traveler-1', ownerId: 'actor-1',
@@ -165,6 +176,17 @@ describe('TravelerDataGrantService', () => {
     const once = await service.issue(issueInput({ expiresAt: '2026-08-30T12:04:00.000Z' }));
     await service.consumeOnce(once, consumeContext());
     await expect(service.consumeOnce(once, consumeContext())).rejects.toThrow('grant is not authorized');
+  });
+
+  it('only allows the grant owner to revoke', async () => {
+    const clock = new FakeClock(new Date('2026-08-30T12:00:00.000Z'));
+    const { service: vault } = createVault();
+    const grants = new InMemoryGrantRepository();
+    const service = new TravelerDataGrantService(grants, vault, clock);
+    const ref = await service.issue(issueInput(), 'owner-1');
+
+    await expect(service.revoke(ref, 'wrong owner', 'owner-2')).rejects.toThrow('grant is not authorized');
+    await expect(service.revoke(ref, 'owner revoke', 'owner-1')).resolves.toBeUndefined();
   });
 
   it('atomically allows exactly one of two concurrent consumers', async () => {

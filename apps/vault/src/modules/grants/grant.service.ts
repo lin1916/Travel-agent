@@ -38,6 +38,7 @@ export interface GrantRef {
 
 export interface GrantRecord extends GrantIssueInput {
   id: string;
+  ownerId: string;
   maxUses: 1;
   usedAt: string | null;
   revokedAt: string | null;
@@ -49,7 +50,7 @@ export interface GrantRepository {
   create(record: GrantRecord): Promise<void>;
   findById(id: string): Promise<GrantRecord | null>;
   consumeIfAuthorized(ref: GrantRef, context: GrantConsumeContext, now: string): Promise<GrantRecord | null>;
-  revoke(id: string, revokedAt: string, reasonHash: string): Promise<boolean>;
+  revoke(id: string, ownerId: string, revokedAt: string, reasonHash: string): Promise<boolean>;
 }
 
 function sameList(left: readonly string[], right: readonly string[]): boolean {
@@ -100,9 +101,9 @@ export class InMemoryGrantRepository implements GrantRepository {
     return clone(consumed);
   }
 
-  async revoke(id: string, revokedAt: string, reasonHash: string): Promise<boolean> {
+  async revoke(id: string, ownerId: string, revokedAt: string, reasonHash: string): Promise<boolean> {
     const record = this.records.get(id);
-    if (!record || record.usedAt !== null || record.revokedAt !== null) return false;
+    if (!record || record.ownerId !== ownerId || record.usedAt !== null || record.revokedAt !== null) return false;
     this.records.set(id, { ...record, revokedAt, revocationReasonHash: reasonHash });
     return true;
   }
@@ -111,6 +112,7 @@ export class InMemoryGrantRepository implements GrantRepository {
 function grantFromRow(row: TravelerDataGrantsTable): GrantRecord {
   return {
     id: row.id,
+    ownerId: row.owner_id,
     intentId: row.intent_id,
     intentVersion: row.intent_version,
     supplierLegalEntity: row.supplier_legal_entity,
@@ -138,6 +140,7 @@ export class PostgresGrantRepository implements GrantRepository {
   async create(record: GrantRecord): Promise<void> {
     await this.db.insertInto('traveler_data_grants').values({
       id: record.id,
+      owner_id: record.ownerId,
       intent_id: record.intentId,
       intent_version: record.intentVersion,
       supplier_legal_entity: record.supplierLegalEntity,
@@ -182,10 +185,11 @@ export class PostgresGrantRepository implements GrantRepository {
     return row ? grantFromRow(row) : null;
   }
 
-  async revoke(id: string, revokedAt: string, reasonHash: string): Promise<boolean> {
+  async revoke(id: string, ownerId: string, revokedAt: string, reasonHash: string): Promise<boolean> {
     const row = await this.db.updateTable('traveler_data_grants')
       .set({ revoked_at: revokedAt, revocation_reason_hash: reasonHash })
       .where('id', '=', id)
+      .where('owner_id', '=', ownerId)
       .where('used_at', 'is', null)
       .where('revoked_at', 'is', null)
       .returning('id').executeTakeFirst();
@@ -211,7 +215,7 @@ export class TravelerDataGrantService {
     private readonly clock: Clock,
   ) {}
 
-  async issue(input: GrantIssueInput): Promise<GrantRef> {
+  async issue(input: GrantIssueInput, ownerId = 'system'): Promise<GrantRef> {
     const now = this.clock.now();
     const expiresAt = new Date(input.expiresAt);
     if (!validIssueInput(input)
@@ -226,6 +230,7 @@ export class TravelerDataGrantService {
       allowedFields: [...input.allowedFields],
       expiresAt: expiresAt.toISOString(),
       id: randomUUID(),
+      ownerId,
       maxUses: 1,
       usedAt: null,
       revokedAt: null,
@@ -248,13 +253,13 @@ export class TravelerDataGrantService {
     }
   }
 
-  async revoke(ref: GrantRef, reason: string): Promise<void> {
+  async revoke(ref: GrantRef, reason: string, ownerId = 'system'): Promise<void> {
     const record = await this.repository.findById(ref.id);
-    if (!record || record.intentId !== ref.intentId || record.expiresAt !== ref.expiresAt) {
+    if (!record || record.ownerId !== ownerId || record.intentId !== ref.intentId || record.expiresAt !== ref.expiresAt) {
       throw new Error('grant is not authorized');
     }
     const reasonHash = createHash('sha256').update(reason).digest('hex');
-    const revoked = await this.repository.revoke(ref.id, this.clock.now().toISOString(), reasonHash);
+    const revoked = await this.repository.revoke(ref.id, ownerId, this.clock.now().toISOString(), reasonHash);
     if (!revoked) throw new Error('grant is not authorized');
   }
 }

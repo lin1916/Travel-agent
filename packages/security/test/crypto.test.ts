@@ -75,6 +75,12 @@ describe('environment key provider', () => {
       VAULT_LOCAL_KEY_BASE64: Buffer.alloc(32).toString('base64'),
       VAULT_LOCAL_KEY_VERSION: 'dev-v1',
     })).toThrow('configured key provider is unavailable');
+    expect(() => EnvironmentKeyProvider.fromEnvironment({
+      NODE_ENV: 'staging',
+      KMS_PROVIDER: 'local',
+      VAULT_LOCAL_KEY_BASE64: Buffer.alloc(32).toString('base64'),
+      VAULT_LOCAL_KEY_VERSION: 'dev-v1',
+    })).toThrow('local key provider is disabled outside development/test');
   });
 });
 

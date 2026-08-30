@@ -55,6 +55,9 @@ describe('development identity provider', () => {
     expect(() => DevIdentityProvider.fromEnvironment({
       NODE_ENV: 'production', DEV_IDENTITY_CODE: 'local-code', DEV_IDENTITY_ACTOR_ID: 'actor-dev',
     })).toThrow('development identity provider is disabled in production');
+    expect(() => DevIdentityProvider.fromEnvironment({
+      NODE_ENV: 'staging', DEV_IDENTITY_CODE: 'local-code', DEV_IDENTITY_ACTOR_ID: 'actor-dev',
+    })).toThrow('development identity provider is disabled outside development/test');
   });
 });
 

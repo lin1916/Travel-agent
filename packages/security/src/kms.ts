@@ -15,6 +15,9 @@ export class EnvironmentKeyProvider implements KeyProvider {
     if (environment.NODE_ENV === 'production') {
       throw new Error('local key provider is disabled in production');
     }
+    if (environment.NODE_ENV !== 'development' && environment.NODE_ENV !== 'test') {
+      throw new Error('local key provider is disabled outside development/test');
+    }
     const encodedKey = environment.VAULT_LOCAL_KEY_BASE64;
     const version = environment.VAULT_LOCAL_KEY_VERSION;
     if (!encodedKey || !version) {
