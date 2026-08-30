@@ -11,7 +11,7 @@ describe('agent execution policy', () => {
     const created = await actions.create('owner-1', { tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit', supplierId: 'supplier-1', bookingType: 'train', refundable: true, offerSnapshotHash: 'offer-v1', requestedAmount: { amountCents: 1000, currency: 'CNY' } }, { correlationId: 'corr', policySnapshot: snapshot });
     await actions.decide(created.id, 'owner-1', { approved: true, reason: 'go', expectedVersion: created.version });
     let latest = mandate;
-    const evaluator = createExecutionPolicyEvaluator({ get: async () => latest }, actions);
+    const evaluator = createExecutionPolicyEvaluator({ get: async () => latest }, actions, { snapshotFor: async () => snapshot });
     const result = await evaluator({ actorId: 'owner-1', actionRequestId: created.id, mandateId: latest.id }, {});
     expect(result.allowed).toBe(true);
     latest = { ...latest, version: 2, revokedAt: '2026-08-30T00:00:00.000Z' };
@@ -20,5 +20,17 @@ describe('agent execution policy', () => {
     latest = mandate;
     await result.consume?.();
     expect((await actions.get(created.id, 'owner-1'))?.status).toBe('executed');
+  });
+
+  it('uses current facts and rejects tool input that changes the approved command', async () => {
+    const actions = new ActionRequestService();
+    const created = await actions.create('owner-1', { tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit', supplierId: 'supplier-1', bookingType: 'train', refundable: true, offerSnapshotHash: 'offer-v1', requestedAmount: { amountCents: 1000, currency: 'CNY' } }, { correlationId: 'corr', policySnapshot: snapshot });
+    await actions.decide(created.id, 'owner-1', { approved: true, reason: 'go', expectedVersion: created.version });
+    const currentFacts = { ...snapshot, currentOfferSnapshotHash: 'offer-v2' };
+    const evaluator = createExecutionPolicyEvaluator({ get: async () => mandate }, actions, { snapshotFor: async () => currentFacts });
+    const staleOffer = await evaluator({ actorId: 'owner-1', actionRequestId: created.id, mandateId: mandate.id }, {});
+    expect(staleOffer.allowed).toBe(false);
+    const overriddenSupplier = await evaluator({ actorId: 'owner-1', actionRequestId: created.id, mandateId: mandate.id }, { supplierId: 'supplier-2' });
+    expect(overriddenSupplier.allowed).toBe(false);
   });
 });

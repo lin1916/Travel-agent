@@ -59,3 +59,13 @@ Remaining concerns:
 Fix-round 2 tests: `pnpm --filter @travel/capability-gateway test -- gateway.test.ts` (6 passed); `pnpm --filter @travel/persistence test -- persistence-unit.test.ts` (8 passed, 7 integration skipped); `pnpm --filter @travel/api test -- agent-execution-policy.test.ts` (6 files, 24 passed); domain/application focused suites remained green. API, application, domain, Gateway, and persistence typechecks/builds plus lint passed.
 
 Remaining concern: live PostgreSQL integration remains unexecuted because `DATABASE_URL` is not configured in this environment.
+
+## Fix round 3
+
+- Added a RED API regression showing that stale current offer facts and input attempting to replace the approved supplier must both block execution.
+- The evaluator now receives current facts from an authoritative provider. In the production module it reads current Trip version, Budget ledger, and booking offer snapshot from PostgreSQL immediately before the side effect; unavailable current facts fail closed.
+- The evaluator builds policy input only from the approved ActionRequest and rejects any tool input that supplies a different approved command field. Consumption remains bound to the original kind, resource, hash, and approved version.
+
+Fix-round 3 evidence: RED `pnpm --filter @travel/api test -- agent-execution-policy.test.ts` failed with stale offer facts incorrectly allowed. GREEN: API tests 6 files / 25 passed; Gateway 6 passed; application 15 passed; domain 22 passed; persistence 8 passed with 7 PostgreSQL integration skips. API build/typecheck/lint and `git diff --check` passed.
+
+Remaining concern: live PostgreSQL integration remains unexecuted because `DATABASE_URL` is not configured in this environment.
