@@ -2,7 +2,7 @@ import type { AgentContext, StructuredAgentOutput } from '@travel/contracts';
 import type { LlmProvider } from './llm-provider.js';
 
 const DATE = /\b(20\d{2}-\d{2}-\d{2})(?:T[^\s]+)?\b/g;
-const TRAVELERS = /(?:for|\u4eba|travelers?)[^0-9]{0,8}(\d{1,2})/i;
+const TRAVELERS = /(?:for\s*)?(\d{1,2})\s*(?:travelers?|\u4eba)/iu;
 
 function cstMidnight(date: string): string { return `${date}T00:00:00.000+08:00`; }
 

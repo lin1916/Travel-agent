@@ -21,7 +21,6 @@ export async function up(db: Kysely<Database>): Promise<void> {
     .addColumn('updated_at', 'timestamptz', col => col.notNull().defaultTo(sql.raw('now()')))
     .execute();
   await db.schema.createIndex('agent_runs_trip_idx').ifNotExists().on('agent_runs').columns(['trip_id', 'updated_at']).execute();
-  await sql`alter table agent_runs add column if not exists tool_call_summaries_json text not null default '[]'`.execute(db);
 }
 
 export async function down(db: Kysely<Database>): Promise<void> {

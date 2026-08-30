@@ -54,6 +54,22 @@ describe('PlanningOrchestrator', () => {
     const tooMany = await orchestrator.start({ tripId: 'trip-1', userMessage: 'Plan Hangzhou from 2026-09-01 to 2026-09-03 for 7 travelers', actorId: 'actor-1' });
     expect(tooMany.missingFields).toEqual(['travelers']);
     expect(tooMany.toolCallSummaries).toHaveLength(0);
+    const tooManyChinese = await orchestrator.start({ tripId: 'trip-1', userMessage: 'Plan Hangzhou from 2026-09-01 to 2026-09-03 for 7人', actorId: 'actor-1' });
+    expect(tooManyChinese.missingFields).toEqual(['travelers']);
+    expect(tooManyChinese.toolCallSummaries).toHaveLength(0);
+  });
+
+  it('rejects unknown trips before creating an agent run', async () => {
+    const { gateway } = makeGateway();
+    const persistence: AgentRunPersistence = {
+      create: async () => { throw new Error('create should not be called'); },
+      get: async () => undefined,
+      save: async run => run,
+    };
+    const reader = { getAny: async () => null };
+    const orchestrator = new PlanningOrchestrator(new RuleBasedProvider(), gateway, persistence, reader);
+    await expect(orchestrator.start({ tripId: 'missing-trip', userMessage: 'Plan Hangzhou', actorId: 'actor-1' }))
+      .rejects.toThrow('trip not found');
   });
 
   it('redacts traveler secrets before invoking a provider', async () => {

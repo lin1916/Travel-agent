@@ -27,6 +27,7 @@ export class AgentController {
       return await this.orchestrator.start({ tripId: parsed.data.tripId, userMessage: parsed.data.userMessage, actorId, requestedRisk: parsed.data.risk });
     } catch (error) {
       if (error instanceof Error && error.message.includes('another actor')) throw new ApplicationError('forbidden', error.message);
+      if (error instanceof Error && error.message === 'trip not found') throw new ApplicationError('validation_error', error.message);
       throw error;
     }
   }

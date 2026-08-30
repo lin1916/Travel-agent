@@ -93,4 +93,14 @@ describe('SearchService', () => {
     expect(result.categories.train?.updatedAt).toMatch(/\+08:00$/);
     expect(seen[0]).toBe('2026-09-01T09:00:00.000+08:00');
   });
+
+  it('preserves date-only CST midnight through supplier search normalization', async () => {
+    const seen: string[] = [];
+    const adapter = new MockTransportAdapter();
+    const originalSearch = adapter.search.bind(adapter);
+    adapter.search = async request => { seen.push(request.startsAt); return originalSearch(request); };
+    const service = new SearchService({ train: adapter });
+    await service.search({ requests: [{ ...base, kind: 'train', startsAt: '2026-09-01T00:00:00.000+08:00' }] });
+    expect(seen[0]).toBe('2026-09-01T00:00:00.000+08:00');
+  });
 });

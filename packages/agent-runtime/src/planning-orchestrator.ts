@@ -60,7 +60,7 @@ export class PlanningOrchestrator {
   private async authoritativeVersion(tripId: string, actorId?: string): Promise<number> {
     if (!this.tripReader) return 1;
     const trip = await this.tripReader.getAny(tripId);
-    if (!trip) return 1;
+    if (!trip) throw new Error('trip not found');
     if (actorId && trip.ownerId !== actorId) throw new Error('trip belongs to another actor');
     return trip.version;
   }
