@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { TripRecord } from '@travel/contracts';
 import { withTransaction, type Database, type BudgetRepository, type EventRepository, type IdempotencyRepository, type TripRepository } from '@travel/persistence';
 import type { Kysely } from 'kysely';
-import type { CreateTripCommand, TripStore } from './trip-service.js';
+import { createTripIdempotencyRequest, type CreateTripCommand, type TripStore } from './trip-service.js';
 import { ApplicationError } from '../errors.js';
 
 export interface CreateTripPersistenceOptions {
@@ -24,7 +24,12 @@ export class PersistentTripStore implements TripStore {
     if (!options?.idempotencyKey) throw new ApplicationError('validation_error', 'idempotency key is required');
     const scope = `trip:create:${trip.ownerId}`;
     return withTransaction(this.db, async tx => {
-      const claim = await this.idempotency.claim(scope, options.idempotencyKey, { trip, totalBudgetCents: options.totalBudgetCents }, tx);
+      const claim = await this.idempotency.claim(
+        scope,
+        options.idempotencyKey,
+        createTripIdempotencyRequest(trip, options.totalBudgetCents),
+        tx,
+      );
       if (claim === 'conflict') throw new ApplicationError('conflict', 'idempotency key was reused with a different request');
       if (claim === 'replay') {
         const replay = await this.idempotency.getResponse<TripRecord>(scope, options.idempotencyKey);

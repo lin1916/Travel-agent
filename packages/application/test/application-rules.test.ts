@@ -1,6 +1,46 @@
 import { describe, expect, it } from 'vitest';
 import { InMemoryTripStore, TripService } from '../src/trips/trip-service.js';
+import { PersistentTripStore } from '../src/trips/persistent-trip-store.js';
 import { ItineraryService } from '../src/itinerary/itinerary-service.js';
+
+function persistentTestStore() {
+  const records = new Map<string, { request: string; response?: any }>();
+  const initialized: Array<{ tripId: string; totalBudgetCents: number }> = [];
+  const db = {
+    transaction: () => ({ execute: async (callback: (tx: unknown) => Promise<unknown>) => callback(db) }),
+  } as any;
+  const trips = {
+    create: async (trip: any) => structuredClone(trip),
+  };
+  const budgets = {
+    initialize: async (tripId: string, totalBudgetCents: number) => {
+      initialized.push({ tripId, totalBudgetCents });
+    },
+  };
+  const idempotency = {
+    claim: async (scope: string, key: string, request: unknown) => {
+      const requestHash = JSON.stringify(request);
+      const recordKey = `${scope}:${key}`;
+      const existing = records.get(recordKey);
+      if (!existing) {
+        records.set(recordKey, { request: requestHash });
+        return 'claimed';
+      }
+      return existing.request === requestHash ? 'replay' : 'conflict';
+    },
+    complete: async (scope: string, key: string, response: unknown) => {
+      records.get(`${scope}:${key}`)!.response = structuredClone(response);
+    },
+    getResponse: async (scope: string, key: string) => records.get(`${scope}:${key}`)?.response ?? null,
+  };
+  const events = {
+    appendAndPublishable: async () => undefined,
+  };
+  return {
+    store: new PersistentTripStore(db, trips as any, budgets as any, idempotency as any, events as any),
+    initialized,
+  };
+}
 
 describe('application rules', () => {
   it('enforces trip ownership and versioning', async () => {
@@ -27,6 +67,33 @@ describe('application rules', () => {
     expect(replay).toEqual(first);
     await expect(service.create('owner-1', { ...command, destination: '苏州' }, { idempotencyKey: 'replay-1', totalBudgetCents: 0 }))
       .rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  it('replays persistent creates with the same owner, key, and request', async () => {
+    const persistent = persistentTestStore();
+    const service = new TripService(persistent.store);
+    const command = {
+      destination: '杭州', startsAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-09-03T00:00:00.000Z', travelerCount: 2,
+    };
+
+    const first = await service.create('owner-1', command, { idempotencyKey: 'persistent-replay-1', totalBudgetCents: 250_000 });
+    const replay = await service.create('owner-1', command, { idempotencyKey: 'persistent-replay-1', totalBudgetCents: 250_000 });
+
+    expect(replay).toEqual(first);
+    expect(persistent.initialized).toEqual([{ tripId: first.id, totalBudgetCents: 250_000 }]);
+  });
+
+  it('scopes in-memory idempotency keys per owner', async () => {
+    const service = new TripService(new InMemoryTripStore());
+    const command = {
+      destination: '杭州', startsAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-09-03T00:00:00.000Z', travelerCount: 2,
+    };
+
+    const ownerOne = await service.create('owner-1', command, { idempotencyKey: 'shared-key', totalBudgetCents: 0 });
+    const ownerTwo = await service.create('owner-2', command, { idempotencyKey: 'shared-key', totalBudgetCents: 0 });
+
+    expect(ownerTwo.ownerId).toBe('owner-2');
+    expect(ownerTwo.id).not.toBe(ownerOne.id);
   });
 
   it('rejects a directly overlapping confirmed itinerary item', () => {

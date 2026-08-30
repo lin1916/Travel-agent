@@ -14,6 +14,20 @@ export interface CreateTripOptions {
   totalBudgetCents: number;
 }
 
+export function createTripIdempotencyRequest(
+  trip: Pick<TripRecord, 'ownerId' | 'destination' | 'startsAt' | 'endsAt' | 'travelerCount'>,
+  totalBudgetCents: number,
+) {
+  return {
+    ownerId: trip.ownerId,
+    destination: trip.destination,
+    startsAt: trip.startsAt,
+    endsAt: trip.endsAt,
+    travelerCount: trip.travelerCount,
+    totalBudgetCents,
+  };
+}
+
 export interface TripStore {
   create(trip: TripRecord, options?: CreateTripOptions): Promise<TripRecord>;
   get(id: string): Promise<TripRecord | null>;
@@ -33,15 +47,9 @@ export class InMemoryTripStore implements TripStore {
     if (!options?.idempotencyKey) {
       throw new ApplicationError('validation_error', 'idempotency key is required');
     }
-    const request = JSON.stringify({
-      ownerId: trip.ownerId,
-      destination: trip.destination,
-      startsAt: trip.startsAt,
-      endsAt: trip.endsAt,
-      travelerCount: trip.travelerCount,
-      totalBudgetCents: options.totalBudgetCents,
-    });
-    const existing = this.idempotency.get(options.idempotencyKey);
+    const request = JSON.stringify(createTripIdempotencyRequest(trip, options.totalBudgetCents));
+    const scopedKey = JSON.stringify([trip.ownerId, options.idempotencyKey]);
+    const existing = this.idempotency.get(scopedKey);
     if (existing) {
       if (existing.request !== request) {
         throw new ApplicationError('conflict', 'idempotency key was reused with a different request');
@@ -49,7 +57,7 @@ export class InMemoryTripStore implements TripStore {
       return structuredClone(existing.response);
     }
     this.trips.set(trip.id, structuredClone(trip));
-    this.idempotency.set(options.idempotencyKey, { request, response: structuredClone(trip) });
+    this.idempotency.set(scopedKey, { request, response: structuredClone(trip) });
     return structuredClone(trip);
   }
 
