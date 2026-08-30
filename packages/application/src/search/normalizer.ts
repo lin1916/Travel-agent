@@ -7,6 +7,7 @@ export function normalizeChinaStandardTime(value: string): string {
   if (!/(Z|[+-]\d{2}:\d{2})$/.test(value)) throw new Error('timestamp must include an explicit timezone');
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw new Error('timestamp must be a valid ISO date');
+  if (/[+]08:00$/.test(value)) return date.toISOString().replace('Z', '+08:00');
   return new Date(date.getTime() + 8 * 60 * 60 * 1000).toISOString().replace('Z', '+08:00');
 }
 

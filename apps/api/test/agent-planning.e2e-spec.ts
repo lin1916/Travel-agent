@@ -40,4 +40,17 @@ describe('agent planning API', () => {
     expect(response.status).toBe(422);
     expect(response.body).toMatchObject({ code: 'policy_blocked' });
   });
+
+  it('enforces run ownership on read and resume', async () => {
+    const created = await request(app.getHttpServer())
+      .post('/v1/agent/runs')
+      .set('x-actor-id', 'run-owner')
+      .send({ tripId: 'trip-owner', userMessage: 'Plan Hangzhou' });
+    expect(created.status).toBe(201);
+    const runId = created.body.runId;
+    const read = await request(app.getHttpServer()).get(`/v1/agent/runs/${runId}`).set('x-actor-id', 'other-actor');
+    expect(read.status).toBe(403);
+    const resumed = await request(app.getHttpServer()).post(`/v1/agent/runs/${runId}/resume`).set('x-actor-id', 'other-actor').send({ userMessage: '2026-09-01 to 2026-09-03' });
+    expect(resumed.status).toBe(403);
+  });
 });

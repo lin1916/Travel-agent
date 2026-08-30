@@ -13,6 +13,7 @@ export async function up(db: Kysely<Database>): Promise<void> {
     .addColumn('assistant_message', 'text', col => col.notNull().defaultTo(''))
     .addColumn('missing_fields_json', 'text', col => col.notNull().defaultTo('[]'))
     .addColumn('tool_calls_json', 'text', col => col.notNull().defaultTo('[]'))
+    .addColumn('tool_call_summaries_json', 'text', col => col.notNull().defaultTo('[]'))
     .addColumn('action_requests_json', 'text', col => col.notNull().defaultTo('[]'))
     .addColumn('next_step', 'varchar(128)')
     .addColumn('current_trip_version', 'integer', col => col.notNull().defaultTo(1))
@@ -20,6 +21,7 @@ export async function up(db: Kysely<Database>): Promise<void> {
     .addColumn('updated_at', 'timestamptz', col => col.notNull().defaultTo(sql.raw('now()')))
     .execute();
   await db.schema.createIndex('agent_runs_trip_idx').ifNotExists().on('agent_runs').columns(['trip_id', 'updated_at']).execute();
+  await sql`alter table agent_runs add column if not exists tool_call_summaries_json text not null default '[]'`.execute(db);
 }
 
 export async function down(db: Kysely<Database>): Promise<void> {

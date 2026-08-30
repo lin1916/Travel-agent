@@ -8,9 +8,8 @@ const StartSchema = z.object({
   tripId: z.string().min(1),
   userMessage: z.string().min(1),
   risk: z.enum(['read', 'prepare', 'commit', 'redirect']).optional(),
-  currentTripVersion: z.number().int().positive().optional(),
 }).strict();
-const ResumeSchema = z.object({ userMessage: z.string().min(1), currentTripVersion: z.number().int().positive().optional() }).strict();
+const ResumeSchema = z.object({ userMessage: z.string().min(1), risk: z.enum(['read', 'prepare', 'commit', 'redirect']).optional() }).strict();
 
 @Controller('v1/agent/runs')
 export class AgentController {
@@ -24,25 +23,40 @@ export class AgentController {
     if ((parsed.data.risk === 'commit' || parsed.data.risk === 'redirect') && !actorId) {
       throw new ApplicationError('policy_blocked', 'authenticated actor is required for commit capabilities');
     }
-    return this.orchestrator.start({ tripId: parsed.data.tripId, userMessage: parsed.data.userMessage, actorId, currentTripVersion: parsed.data.currentTripVersion });
+    try {
+      return await this.orchestrator.start({ tripId: parsed.data.tripId, userMessage: parsed.data.userMessage, actorId, requestedRisk: parsed.data.risk });
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('another actor')) throw new ApplicationError('forbidden', error.message);
+      throw error;
+    }
   }
 
   @Get(':runId')
-  async get(@Param('runId') runId: string) {
-    const run = this.orchestrator.get(runId);
-    if (!run) throw new ApplicationError('validation_error', 'agent run not found');
-    return run;
+  async get(@Headers('x-actor-id') actorId: string | undefined, @Param('runId') runId: string) {
+    try {
+      const run = await this.orchestrator.get(runId, actorId);
+      if (!run) throw new ApplicationError('validation_error', 'agent run not found');
+      return run;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('another actor')) throw new ApplicationError('forbidden', error.message);
+      throw error;
+    }
   }
 
   @Post(':runId/resume')
   @HttpCode(HttpStatus.OK)
-  async resume(@Param('runId') runId: string, @Body() rawBody: unknown) {
+  async resume(@Headers('x-actor-id') actorId: string | undefined, @Param('runId') runId: string, @Body() rawBody: unknown) {
     const parsed = ResumeSchema.safeParse(rawBody);
     if (!parsed.success) throw new ApplicationError('validation_error', parsed.error.issues[0]?.message ?? 'invalid resume request');
+    if ((parsed.data.risk === 'commit' || parsed.data.risk === 'redirect') && !actorId) {
+      throw new ApplicationError('policy_blocked', 'authenticated actor is required for commit capabilities');
+    }
     try {
-      return await this.orchestrator.resume(runId, parsed.data.userMessage, parsed.data.currentTripVersion);
+      return await this.orchestrator.resume(runId, parsed.data.userMessage, actorId, parsed.data.risk);
     } catch (error) {
       if (error instanceof Error && error.message === 'agent run not found') throw new ApplicationError('validation_error', error.message);
+      if (error instanceof Error && error.message.includes('another actor')) throw new ApplicationError('forbidden', error.message);
+      if (error instanceof Error && error.message.includes('trip version changed')) throw new ApplicationError('conflict', error.message);
       throw error;
     }
   }

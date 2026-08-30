@@ -134,6 +134,7 @@ export interface AgentRunsTable {
   assistant_message: string;
   missing_fields_json: string;
   tool_calls_json: string;
+  tool_call_summaries_json: string;
   action_requests_json: string;
   next_step: string | null;
   current_trip_version: number;

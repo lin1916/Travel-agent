@@ -19,6 +19,8 @@ export class CapabilityGateway {
 
   list(): string[] { return [...this.tools.keys()]; }
 
+  riskOf(name: string) { return this.tools.get(name)?.risk; }
+
   async execute<O>(name: string, rawContext: CapabilityContext, input: unknown): Promise<O> {
     const contextResult = CapabilityContextSchema.safeParse(rawContext);
     if (!contextResult.success) {

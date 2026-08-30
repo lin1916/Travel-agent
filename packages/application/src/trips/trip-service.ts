@@ -113,6 +113,11 @@ export class TripService {
     return trip;
   }
 
+  /** Returns the authoritative trip record for internal planning/version checks. */
+  async getAny(id: string): Promise<TripRecord | null> {
+    return this.store.get(id);
+  }
+
   async update(
     id: string,
     ownerId: string,

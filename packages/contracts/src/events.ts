@@ -19,6 +19,7 @@ export interface AgentContext {
   userMessage: string;
   currentTripVersion: number;
   redactedOffers: import('./search.js').NormalizedOffer[];
+  requestedRisk?: import('./money.js').RiskLevel;
 }
 
 export interface StructuredAgentOutput {
