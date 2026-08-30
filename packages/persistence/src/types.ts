@@ -234,6 +234,13 @@ export class IdempotencyConflictError extends Error {
   }
 }
 
+export class TaskConflictError extends Error {
+  constructor(taskId: string) {
+    super(`task id conflict: ${taskId}`);
+    this.name = 'TaskConflictError';
+  }
+}
+
 export class DatabaseConfigurationError extends Error {
   constructor() {
     super('DATABASE_URL is required for PostgreSQL persistence');

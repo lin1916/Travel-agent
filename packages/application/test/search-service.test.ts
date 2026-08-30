@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { SearchRequest } from '@travel/contracts';
 import { MockDiningAdapter, MockTransportAdapter } from '@travel/supplier-adapters';
-import { SearchService } from '../src/search/search-service.js';
+import { InMemorySearchTaskQueue, SearchService } from '../src/search/search-service.js';
 
 const base: Omit<SearchRequest, 'kind'> = {
   tripId: 'trip-1',
@@ -51,6 +51,18 @@ describe('SearchService', () => {
     expect(result).toMatchObject({ status: 'queued', taskId: expect.stringMatching(/^search-/) });
     expect(enqueued).toHaveLength(1);
     expect(enqueued[0].kind).toBe('search');
+  });
+
+  it('replays an identical long search with one stable task id', async () => {
+    const queue = new InMemorySearchTaskQueue();
+    const service = new SearchService({ train: new MockTransportAdapter() }, queue);
+    const input = { requests: [
+      { ...base, kind: 'train' }, { ...base, kind: 'train' }, { ...base, kind: 'train' }, { ...base, kind: 'train' },
+    ] };
+    const first = await service.search(input);
+    const second = await service.search(input);
+    expect(first.taskId).toBe(second.taskId);
+    expect(queue.tasks.size).toBe(1);
   });
 
   it('normalizes search request timestamps to China Standard Time', async () => {

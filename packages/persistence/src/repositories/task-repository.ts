@@ -1,18 +1,19 @@
 import type { Kysely } from 'kysely';
-import type { Database, EnqueueTaskInput, LeasedTask, TaskCompletion } from '../types.js';
+import { canonicalRequestJson, TaskConflictError, type Database, type EnqueueTaskInput, type LeasedTask, type TaskCompletion } from '../types.js';
 
 export class TaskRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
   async enqueue(input: EnqueueTaskInput): Promise<void> {
     const now = new Date().toISOString();
+    const payloadJson = canonicalRequestJson(input.payload);
     await this.db
       .insertInto('tasks')
       .values({
         id: input.id,
         kind: input.kind,
         status: 'pending',
-        payload_json: JSON.stringify(input.payload),
+        payload_json: payloadJson,
         attempts: 0,
         available_at: input.availableAt?.toISOString() ?? now,
         lease_owner: null,
@@ -21,7 +22,17 @@ export class TaskRepository {
         created_at: now,
         updated_at: now,
       })
+      .onConflict(oc => oc.column('id').doNothing())
       .execute();
+
+    const existing = await this.db
+      .selectFrom('tasks')
+      .select(['kind', 'payload_json'])
+      .where('id', '=', input.id)
+      .executeTakeFirst();
+    if (!existing || existing.kind !== input.kind || existing.payload_json !== payloadJson) {
+      throw new TaskConflictError(input.id);
+    }
   }
 
   async lease(workerId: string, now: Date, leaseSeconds: number): Promise<LeasedTask | null> {

@@ -79,6 +79,15 @@ suite('PostgreSQL repositories', () => {
     expect(reclaimed?.leaseOwner).toBe('worker-2');
   });
 
+  it('deduplicates identical task replays and rejects conflicting payloads', async () => {
+    const taskId = 'search-replay-' + Date.now();
+    const payload = { requests: [{ tripId: 'trip-1', kind: 'train' }], mode: 'value' };
+    await tasks.enqueue({ id: taskId, kind: 'search', payload });
+    await tasks.enqueue({ id: taskId, kind: 'search', payload: { mode: 'value', requests: [{ kind: 'train', tripId: 'trip-1' }] } });
+    expect(await db.selectFrom('tasks').select('id').where('id', '=', taskId).execute()).toHaveLength(1);
+    await expect(tasks.enqueue({ id: taskId, kind: 'search', payload: { requests: [{ tripId: 'trip-2', kind: 'train' }], mode: 'value' } })).rejects.toThrow('task id conflict');
+  });
+
   it('rolls back a trip mutation and its event together', async () => {
     const tripId = 'trip-transaction-' + Date.now();
     await expect(

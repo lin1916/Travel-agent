@@ -102,11 +102,24 @@ describe('mock supplier adapter contract', () => {
   });
 
   it('emits a deterministic webhook regression signal for out-of-order events', async () => {
-    const adapter = new MockDiningAdapter('out_of_order_webhook');
-    const first = await adapter.parseWebhook({ supplierId: 'mock-dining', rawBody: new Uint8Array(), headers: {} });
-    const second = await adapter.parseWebhook({ supplierId: 'mock-dining', rawBody: new Uint8Array(), headers: {} });
-    expect(first.lifecycleStatus).toBe('confirmed');
-    expect(second.lifecycleStatus).toBe('awaiting_payment');
-    expect(first.externalEventId).not.toBe(second.externalEventId);
+    for (const Adapter of [MockTransportAdapter, MockStayAdapter, MockAttractionAdapter, MockDiningAdapter]) {
+      const adapter = new Adapter('out_of_order_webhook');
+      const first = await adapter.parseWebhook({ supplierId: adapter.supplierId, rawBody: new Uint8Array(), headers: {} });
+      const second = await adapter.parseWebhook({ supplierId: adapter.supplierId, rawBody: new Uint8Array(), headers: {} });
+      expect(first.lifecycleStatus).toBe('confirmed');
+      expect(second.lifecycleStatus).toBe('awaiting_payment');
+      expect(first.externalEventId).not.toBe(second.externalEventId);
+    }
+  });
+
+  it('emits deterministic duplicate webhook IDs for every adapter', async () => {
+    for (const Adapter of [MockTransportAdapter, MockStayAdapter, MockAttractionAdapter, MockDiningAdapter]) {
+      const adapter = new Adapter('duplicate_webhook');
+      const first = await adapter.parseWebhook({ supplierId: adapter.supplierId, rawBody: new Uint8Array(), headers: {} });
+      const second = await adapter.parseWebhook({ supplierId: adapter.supplierId, rawBody: new Uint8Array(), headers: {} });
+      expect(first.externalEventId).toBe('duplicate-event-1');
+      expect(second.externalEventId).toBe(first.externalEventId);
+      expect(second.lifecycleStatus).toBe('confirmed');
+    }
   });
 });

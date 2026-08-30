@@ -71,3 +71,23 @@ Addressed the independent review findings:
 - `pnpm --filter @travel/application test -- search-service.test.ts` -> 9 tests passed.
 - `pnpm --filter @travel/api test -- search.e2e-spec.ts` -> 9 tests passed, including existing health/trip suites.
 - `pnpm --filter @travel/application typecheck`, `pnpm --filter @travel/api typecheck`, `pnpm --filter @travel/supplier-adapters typecheck`, and `pnpm --filter @travel/persistence typecheck` -> passed.
+
+## Repair Round 2 (2026-08-30)
+
+Addressed the two remaining review findings:
+
+- `TaskRepository.enqueue` now canonicalizes payload JSON, uses PostgreSQL `ON CONFLICT DO NOTHING`, and compares the stored kind/payload. Identical task-ID replays are idempotent; a same-ID/different-payload or kind raises `TaskConflictError` instead of creating a duplicate or hiding a conflict.
+- Duplicate and out-of-order webhook tests now run against all four adapters and verify stable duplicate IDs and confirmed-then-regression sequences.
+
+### Repair TDD Evidence
+
+- Added a PostgreSQL repository integration test for identical replay deduplication and conflicting payload rejection. It is skipped in this environment because `DATABASE_URL` is not configured; with PostgreSQL it exercises the real migration/repository path.
+- Added an application replay test asserting repeated long searches produce one stable task ID/queue entry.
+- Added supplier tests for duplicate and out-of-order webhook sequences across transport, stay, attraction, and dining adapters.
+
+### Repair Green Evidence
+
+- `pnpm --filter @travel/supplier-adapters test -- adapter-contract.test.ts` -> 15 tests passed.
+- `pnpm --filter @travel/application test -- search-service.test.ts` -> 10 tests passed.
+- `pnpm --filter @travel/persistence test -- repositories.integration.test.ts` -> 3 unit tests passed; 4 PostgreSQL integration tests skipped without `DATABASE_URL`.
+- `pnpm --filter @travel/api test -- search.e2e-spec.ts` -> 9 tests passed.
