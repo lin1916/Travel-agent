@@ -121,3 +121,21 @@ Fix-round verification:
 - `pnpm test` — 13 tasks successful; package tests passed with only Turbo output-cache warnings.
 
 Remaining concerns: PostgreSQL booking-repository integration and locking are not exercised in this environment without `DATABASE_URL`; production booking remains intentionally fail-closed until the durable repository, current-facts provider, and vault grant-consume client are configured. Redirect replay storage defaults to an in-memory nonce store and should use a durable nonce adapter for multi-instance production deployment.
+
+## Fix Round 5 (Final permitted round)
+
+- Bound governed authorization to the supplier-revalidated offer amount: missing, understated, or otherwise mismatched ActionRequest amounts are rejected; policy evaluation uses that exact current amount; the intent records it; and the supplier order command carries the same amount. The stored create-request price remains only a fail-closed revalidation-pause comparison and cannot lower the authorized/order amount.
+- Kept the durable idempotency claim before authorization consumption, then added an exact same-request `claimed`-row abandon path when consume fails. Mismatched requests and completed responses cannot be removed. A safe retry can reclaim the key, while supplier creation still occurs only after a durable claim and indeterminate creation replays the stored unknown result without another supplier call.
+- Removed caller timestamps as the overlap source. Commit now requires a complete, valid schedule from supplier revalidation, binds that schedule onto the intent, evaluates direct overlap from it, and fails closed when the schedule cannot be resolved. Omitted and forged browser times no longer bypass overlap.
+
+Final-round TDD evidence:
+
+- RED: focused application regressions failed for stranded consume claims, missing/under-approved amounts, omitted/forged schedule overlap, and unresolved schedule; the persistence test initially failed to compile because exact claim abandonment did not exist. A supplier-command mutation from 1,000 cents to 0 was also caught by the new amount assertion.
+- GREEN: `pnpm --filter @travel/application test -- booking-service.test.ts` passed 29 tests across 4 files; `pnpm --filter @travel/api exec vitest run test/booking.e2e-spec.ts` passed 5 tests; domain passed 25 tests, contracts passed 8 tests, and supplier adapters passed 18 tests.
+- `pnpm --filter @travel/persistence exec vitest run test/booking-repository.integration.test.ts` compiled and skipped its 4 PostgreSQL tests because `DATABASE_URL` is unset.
+- `pnpm typecheck` — 13/13 tasks successful.
+- `pnpm lint` — 13/13 tasks successful.
+- `pnpm build` — 13/13 tasks successful.
+- `pnpm test` — 13/13 tasks successful; persistence reported 8 passing tests and 11 PostgreSQL tests skipped because `DATABASE_URL` is unset. Turbo emitted only the existing missing-test-output cache warnings.
+
+Remaining concern: the PostgreSQL exact-abandon integration path is compiled but not runtime-exercised without `DATABASE_URL`. Production booking remains intentionally fail-closed until the durable repository, current-facts/offer provider, and transactional vault grant-consume provider are configured; mock supplier execution remains test-only and no traveler plaintext was added to application state, logs, events, URLs, or order commands.

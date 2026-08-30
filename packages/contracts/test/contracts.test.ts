@@ -41,7 +41,7 @@ describe('shared contract schemas', () => {
 
   it('parses supplier, search, mandate, action, and policy boundary inputs', () => {
     expect(RevalidateRequestSchema.parse({ supplierId: 'mock', offerSnapshotHash: 'hash', offerId: 'offer' }).offerId).toBe('offer');
-    expect(CreateSupplierOrderSchema.parse({ intentId: 'intent', offerSnapshotHash: 'hash', travelerDataGrantId: 'grant', executionAuthorizationRef: 'auth', externalIdempotencyKey: 'key' }).intentId).toBe('intent');
+    expect(CreateSupplierOrderSchema.parse({ intentId: 'intent', offerSnapshotHash: 'hash', amount: { amountCents: 100, currency: 'CNY' }, travelerDataGrantId: 'grant', executionAuthorizationRef: 'auth', externalIdempotencyKey: 'key' }).intentId).toBe('intent');
     expect(SupplierWebhookSchema.parse({ supplierId: 'mock', rawBody: new Uint8Array([1]), headers: {} }).supplierId).toBe('mock');
     expect(SupplierOrderSnapshotSchema.parse({ lifecycleStatus: 'creation_unknown', reconciliationStatus: 'pending' }).lifecycleStatus).toBe('creation_unknown');
     expect(SupplierOfferSchema.parse({ id: 'offer', kind: 'train', supplierId: 'mock', price: { amountCents: 100, currency: 'CNY' }, snapshotHash: 'hash' }).kind).toBe('train');

@@ -1,4 +1,4 @@
-import type { BookingIntent, OfferKind, BookingIntentStatus } from '@travel/contracts';
+import type { BookingIntent, OfferKind, BookingIntentStatus, Money } from '@travel/contracts';
 import { canTransitionBookingIntent } from './booking-state-machine.js';
 
 export interface BookingIntentAggregate extends BookingIntent {
@@ -6,6 +6,7 @@ export interface BookingIntentAggregate extends BookingIntent {
   supplierId?: string;
   supplierLegalEntity?: string;
   originalPriceCents?: number;
+  offerAmount?: Money;
   refundRulesHash?: string;
   refundable?: boolean;
   travelerDataGrantId?: string;

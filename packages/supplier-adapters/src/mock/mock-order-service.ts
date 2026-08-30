@@ -1,6 +1,6 @@
 import type { CreateOrderResponse, CreateSupplierOrder, RevalidatedOffer, RevalidateRequest, SupplierOrderSnapshot } from '@travel/contracts';
 
-export interface MockOrderOptions { outcome: CreateOrderResponse['outcome']; snapshotHash: string; priceCents?: number; inventoryAvailable?: boolean; refundRulesHash?: string }
+export interface MockOrderOptions { outcome: CreateOrderResponse['outcome']; snapshotHash: string; priceCents?: number; inventoryAvailable?: boolean; refundRulesHash?: string; startsAt?: string | null; endsAt?: string | null }
 
 export class MockOrderService {
   readonly created = new Map<string, CreateSupplierOrder>();
@@ -16,6 +16,8 @@ export class MockOrderService {
       price: { amountCents: this.options.priceCents ?? 1000, currency: 'CNY' },
       inventoryAvailable: this.options.inventoryAvailable ?? true,
       refundRulesHash: this.options.refundRulesHash ?? 'rules-v1',
+      startsAt: this.options.startsAt === null ? undefined : this.options.startsAt ?? '2026-09-10T08:00:00.000+08:00',
+      endsAt: this.options.endsAt === null ? undefined : this.options.endsAt ?? '2026-09-10T10:00:00.000+08:00',
     };
   }
 

@@ -17,8 +17,8 @@ export const CreateOrderResponseSchema = z.object({
 });
 export interface SupplierOrderRef { supplierId: string; supplierOrderId: string }
 export const SupplierOrderRefSchema = z.object({ supplierId: z.string(), supplierOrderId: z.string() });
-export interface CreateSupplierOrder { intentId: string; offerSnapshotHash: string; travelerDataGrantId: string; executionAuthorizationRef: string; externalIdempotencyKey: string }
-export const CreateSupplierOrderSchema = z.object({ intentId: z.string(), offerSnapshotHash: z.string(), travelerDataGrantId: z.string(), executionAuthorizationRef: z.string(), externalIdempotencyKey: z.string() });
+export interface CreateSupplierOrder { intentId: string; offerSnapshotHash: string; amount: Money; travelerDataGrantId: string; executionAuthorizationRef: string; externalIdempotencyKey: string }
+export const CreateSupplierOrderSchema = z.object({ intentId: z.string(), offerSnapshotHash: z.string(), amount: MoneySchema, travelerDataGrantId: z.string(), executionAuthorizationRef: z.string(), externalIdempotencyKey: z.string() });
 export interface SupplierOrderSnapshot { lifecycleStatus: SupplierOrderLifecycle; reconciliationStatus: ReconciliationStatus; supplierOrderRef?: SupplierOrderRef; paymentUrl?: string; confirmationRef?: string }
 export const SupplierOrderSnapshotSchema = z.object({ lifecycleStatus: SupplierOrderLifecycleSchema, reconciliationStatus: ReconciliationStatusSchema, supplierOrderRef: z.object({ supplierId: z.string(), supplierOrderId: z.string() }).optional(), paymentUrl: z.string().url().optional(), confirmationRef: z.string().optional() });
 export interface SupplierWebhook { supplierId: string; rawBody: Uint8Array; headers: Record<string,string> }

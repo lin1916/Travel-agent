@@ -84,6 +84,7 @@ export class BookingRepository {
   }
 
   async claimCommit(actorId: string, idempotencyKey: string, request: unknown, tx?: DatabaseTransaction): Promise<IdempotencyClaim> { return this.idempotency.claim(`booking:commit:${actorId}`, idempotencyKey, request, tx); }
+  async abandonCommit(actorId: string, idempotencyKey: string, request: unknown, tx?: DatabaseTransaction): Promise<boolean> { return this.idempotency.abandon(`booking:commit:${actorId}`, idempotencyKey, request, tx); }
   async getCommitResult<T>(actorId: string, idempotencyKey: string): Promise<T | null> { return this.idempotency.getResponse<T>(`booking:commit:${actorId}`, idempotencyKey); }
   async saveCommitResult(actorId: string, idempotencyKey: string, response: unknown, tx?: DatabaseTransaction): Promise<void> { await this.idempotency.complete(`booking:commit:${actorId}`, idempotencyKey, response, tx); }
 

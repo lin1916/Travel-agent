@@ -49,6 +49,18 @@ export class IdempotencyRepository {
       .execute();
   }
 
+  async abandon(scope: string, key: string, request: unknown, tx?: DatabaseTransaction): Promise<boolean> {
+    const deleted = await (tx ?? this.db)
+      .deleteFrom('idempotency_keys')
+      .where('scope', '=', scope)
+      .where('key', '=', key)
+      .where('request_hash', '=', canonicalRequestHash(request))
+      .where('status', '=', 'claimed')
+      .returning('key')
+      .executeTakeFirst();
+    return Boolean(deleted);
+  }
+
   async getReplayState<T = unknown>(scope: string, key: string): Promise<IdempotencyReplayState<T> | null> {
     const row = await this.db
       .selectFrom('idempotency_keys')

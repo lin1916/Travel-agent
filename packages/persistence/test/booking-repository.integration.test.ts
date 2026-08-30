@@ -42,6 +42,19 @@ suite('PostgreSQL booking repository', () => {
     expect(await bookings.claimCommit(actorId, 'commit-1', { intentId: 'intent-2', expectedVersion: 1 })).toBe('conflict');
   });
 
+  it('abandons only the matching in-flight commit claim so consume failure can retry safely', async () => {
+    const actorId = `booking-abandon-owner-${Date.now()}`;
+    const request = { intentId: 'intent-1', expectedVersion: 1, actionRequestId: 'action-1' };
+    expect(await bookings.claimCommit(actorId, 'commit-1', request)).toBe('claimed');
+    expect(await bookings.abandonCommit(actorId, 'commit-1', { ...request, intentId: 'other-intent' })).toBe(false);
+    expect(await bookings.claimCommit(actorId, 'commit-1', request)).toBe('replay');
+    expect(await bookings.abandonCommit(actorId, 'commit-1', request)).toBe(true);
+    expect(await bookings.claimCommit(actorId, 'commit-1', request)).toBe('claimed');
+    await bookings.saveCommitResult(actorId, 'commit-1', { accepted: true });
+    expect(await bookings.abandonCommit(actorId, 'commit-1', request)).toBe(false);
+    expect(await bookings.getCommitResult(actorId, 'commit-1')).toEqual({ accepted: true });
+  });
+
   it('persists intent, supplier order, outbox event, and response together', async () => {
     const suffix = Date.now().toString();
     const tripId = `booking-commit-trip-${suffix}`;

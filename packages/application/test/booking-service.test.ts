@@ -13,14 +13,33 @@ class ClaimTrackingBookingStore extends InMemoryBookingStore {
   }
 }
 
+class RecoverableClaimBookingStore extends InMemoryBookingStore {
+  readonly claims = new Set<string>();
+  readonly abandoned: string[] = [];
+  private readonly results = new Map<string, any>();
+  async claimCommit(_actorId: string, idempotencyKey: string): Promise<'claimed' | 'replay'> {
+    if (this.claims.has(idempotencyKey)) return 'replay';
+    this.claims.add(idempotencyKey);
+    return 'claimed';
+  }
+  async abandonCommit(_actorId: string, idempotencyKey: string): Promise<boolean> {
+    if (!this.claims.delete(idempotencyKey)) return false;
+    this.abandoned.push(idempotencyKey);
+    return true;
+  }
+  async getCommitResult(_actorId: string, idempotencyKey: string): Promise<any | null> { return this.results.get(idempotencyKey) ?? null; }
+  async saveCommitResult(_actorId: string, idempotencyKey: string, result: any): Promise<void> { this.results.set(idempotencyKey, structuredClone(result)); }
+}
+
 const auth = { authorize: async (actorId: string, intent: any, input: any) => { if (actorId !== 'actor-1') throw new Error('forbidden'); if (!input.actionRequestId && !input.mandateId) throw new Error('authorization required'); return { consume: async () => undefined }; } };
 
-const create = async (service: BookingServiceImpl, grantId = 'grant-1') => service.create('actor-1', {
+const create = async (service: BookingServiceImpl, grantId = 'grant-1', overrides: Record<string, unknown> = {}) => service.create('actor-1', {
   id: 'intent-1', tripId: 'trip-1', offerId: 'offer-1', offerKind: 'train', supplierId: 'mock-train',
   selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', refundable: true,
   startsAt: '2026-09-10T08:00:00.000+08:00', endsAt: '2026-09-10T10:00:00.000+08:00',
   travelerDataGrantId: grantId, travelerDataGrantExpiresAt: '2026-09-10T07:05:00.000+08:00', travelerIds: ['traveler-1'],
   requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing',
+  ...overrides,
 });
 
 const policySnapshot = {
@@ -33,7 +52,7 @@ const policySnapshot = {
   currentOfferSnapshotHash: 'offer-v1', now: '2026-09-10T07:00:00.000+08:00',
 };
 
-async function governedAuthorization(options: { overlap?: boolean; budgetLimit?: number; grantAllowed?: boolean } = {}) {
+async function governedAuthorization(options: { overlap?: boolean; budgetLimit?: number; grantAllowed?: boolean; approvedAmountCents?: number | null } = {}) {
   const actions = new ActionRequestService(() => new Date('2026-09-10T07:00:00.000+08:00'));
   const mandates = new MandateStore();
   const mandate = mandates.create('actor-1', {
@@ -43,7 +62,7 @@ async function governedAuthorization(options: { overlap?: boolean; budgetLimit?:
     validUntil: '2026-09-11T00:00:00.000+08:00', exceptionPolicy: 'none',
   });
   const action = await actions.create('actor-1', {
-    tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit', requestedAmount: { amountCents: 1000, currency: 'CNY' },
+    tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit', ...(options.approvedAmountCents === null ? {} : { requestedAmount: { amountCents: options.approvedAmountCents ?? 1000, currency: 'CNY' as const } }),
     supplierId: 'mock-train', bookingType: 'train', refundable: true, offerSnapshotHash: 'offer-v1', requestedSensitiveFields: ['fullName'],
   }, { correlationId: 'booking-test', policySnapshot });
   const approved = await actions.decide(action.id, 'actor-1', { approved: true, reason: 'go', expectedVersion: action.version });
@@ -85,24 +104,48 @@ describe('booking service', () => {
     expect(store.claims).toEqual([]);
   });
 
+  it('does not strand a durable idempotency key when authorization consume fails before a safe retry', async () => {
+    const store = new RecoverableClaimBookingStore();
+    const orders = new MockOrderService({ outcome: 'pending', snapshotHash: 'offer-v1' });
+    let consumeAttempts = 0;
+    const flakyAuthorization = { authorize: async () => ({ consume: async () => { consumeAttempts += 1; if (consumeAttempts === 1) throw new Error('authorization consume failed'); } }) };
+    const service = new BookingServiceImpl(store, orders, undefined, flakyAuthorization);
+    await create(service);
+    const command = { intentId: 'intent-1', expectedVersion: 1, actionRequestId: 'approved-once', idempotencyKey: 'recover-after-consume', selectedOfferSnapshotHash: 'offer-v1' };
+
+    await expect(service.commit('actor-1', command)).rejects.toThrow('authorization consume failed');
+    expect(store.claims.size).toBe(0);
+    expect(store.abandoned).toEqual(['recover-after-consume']);
+    expect(orders.created.size).toBe(0);
+
+    await expect(service.commit('actor-1', command)).resolves.toMatchObject({ intent: { status: 'awaiting_supplier' } });
+    expect(orders.created.size).toBe(1);
+  });
+
   it('creates an awaiting-payment mock order after a consumed decision', async () => {
     const redirects = new RedirectTokenServiceImpl('test-booking-key');
-    const service = new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService({ outcome: 'accepted', snapshotHash: 'offer-v1' }), undefined, auth, redirects);
+    const orders = new MockOrderService({ outcome: 'accepted', snapshotHash: 'offer-v1' });
+    const service = new BookingServiceImpl(new InMemoryBookingStore(), orders, undefined, auth, redirects);
     await create(service);
     const result = await service.commit('actor-1', { intentId: 'intent-1', expectedVersion: 1, actionRequestId: 'approved-once', idempotencyKey: 'commit-2', selectedOfferSnapshotHash: 'offer-v1' });
     expect(result.intent.status).toBe('awaiting_supplier');
     expect(result.supplierOrder).toMatchObject({ lifecycleStatus: 'awaiting_payment' });
+    expect([...orders.created.values()][0]).toMatchObject({ amount: { amountCents: 1000, currency: 'CNY' } });
     expect(result.redirectUrl).toMatch(/^\/v1\/supplier-redirects\/mock-train\?token=/);
     await expect(redirects.verify(decodeURIComponent(result.redirectUrl!.split('token=')[1]!), new Date(), { actorId: 'actor-1', supplierId: 'mock-train' })).resolves.toMatchObject({ intentId: 'intent-1', supplierId: 'mock-train' });
     await expect(service.commit('actor-1', { intentId: 'intent-1', expectedVersion: result.intent.version, actionRequestId: 'approved-once', idempotencyKey: 'commit-3', selectedOfferSnapshotHash: 'offer-v1' })).rejects.toThrow();
   });
 
   it('records indeterminate supplier creation as unknown rather than success', async () => {
-    const service = new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService({ outcome: 'indeterminate', snapshotHash: 'offer-v1' }), undefined, auth);
+    const orders = new MockOrderService({ outcome: 'indeterminate', snapshotHash: 'offer-v1' });
+    const service = new BookingServiceImpl(new InMemoryBookingStore(), orders, undefined, auth);
     await create(service);
-    const result = await service.commit('actor-1', { intentId: 'intent-1', expectedVersion: 1, actionRequestId: 'approved-once', idempotencyKey: 'commit-4', selectedOfferSnapshotHash: 'offer-v1' });
+    const command = { intentId: 'intent-1', expectedVersion: 1, actionRequestId: 'approved-once', idempotencyKey: 'commit-4', selectedOfferSnapshotHash: 'offer-v1' };
+    const result = await service.commit('actor-1', command);
     expect(result.intent.status).toBe('awaiting_supplier');
     expect(result.supplierOrder).toMatchObject({ lifecycleStatus: 'creation_unknown', reconciliationStatus: 'manual_review' });
+    await expect(service.commit('actor-1', command)).resolves.toEqual(result);
+    expect(orders.created.size).toBe(1);
   });
 
   it('requires an authorization reference and rejects browser hash tampering', async () => {
@@ -133,6 +176,48 @@ describe('booking service', () => {
     await service.commit('actor-1', { intentId: 'intent-1', expectedVersion: 1, actionRequestId: governed.approved.id, mandateId: governed.mandate.id, idempotencyKey: 'bound', selectedOfferSnapshotHash: 'offer-v1' });
     expect((await governed.actions.getRecord(governed.approved.id, 'actor-1')).status).toBe('executed');
     expect(governed.grantConsumes()).toBe(1);
+  });
+
+  it('rejects a missing or understated approved amount against the supplier-revalidated offer price', async () => {
+    for (const approvedAmountCents of [null, 500, 1500] as const) {
+      const governed = await governedAuthorization({ approvedAmountCents });
+      const orders = new MockOrderService({ outcome: 'pending', snapshotHash: 'offer-v1', priceCents: 1000 });
+      const service = new BookingServiceImpl(new InMemoryBookingStore(), orders, undefined, governed.authorization);
+      await create(service);
+
+      await expect(service.commit('actor-1', { intentId: 'intent-1', expectedVersion: 1, actionRequestId: governed.approved.id, mandateId: governed.mandate.id, idempotencyKey: `amount-${approvedAmountCents}`, selectedOfferSnapshotHash: 'offer-v1' })).rejects.toThrow();
+      expect(orders.created.size).toBe(0);
+    }
+  });
+
+  it('uses the supplier-revalidated schedule when caller times are omitted or forged', async () => {
+    for (const schedule of [
+      { startsAt: undefined, endsAt: undefined },
+      { startsAt: '2026-09-10T12:00:00.000+08:00', endsAt: '2026-09-10T13:00:00.000+08:00' },
+    ]) {
+      const governed = await governedAuthorization({ overlap: true });
+      const orders = new MockOrderService({ outcome: 'pending', snapshotHash: 'offer-v1' });
+      const service = new BookingServiceImpl(new InMemoryBookingStore(), orders, undefined, governed.authorization);
+      await create(service, 'grant-1', schedule);
+
+      await expect(service.commit('actor-1', { intentId: 'intent-1', expectedVersion: 1, actionRequestId: governed.approved.id, mandateId: governed.mandate.id, idempotencyKey: `schedule-${String(schedule.startsAt)}`, selectedOfferSnapshotHash: 'offer-v1' })).rejects.toMatchObject({ code: 'policy_blocked' });
+      expect(orders.created.size).toBe(0);
+    }
+  });
+
+  it('fails closed when the supplier cannot resolve a complete offer schedule', async () => {
+    const governed = await governedAuthorization();
+    const orders = new MockOrderService({ outcome: 'pending', snapshotHash: 'offer-v1' });
+    const originalRevalidate = orders.revalidate.bind(orders);
+    orders.revalidate = async input => {
+      const current = await originalRevalidate(input);
+      return { ...current, startsAt: undefined, endsAt: undefined };
+    };
+    const service = new BookingServiceImpl(new InMemoryBookingStore(), orders, undefined, governed.authorization);
+    await create(service, 'grant-1', { startsAt: undefined, endsAt: undefined });
+
+    await expect(service.commit('actor-1', { intentId: 'intent-1', expectedVersion: 1, actionRequestId: governed.approved.id, mandateId: governed.mandate.id, idempotencyKey: 'missing-schedule', selectedOfferSnapshotHash: 'offer-v1' })).rejects.toMatchObject({ code: 'policy_blocked' });
+    expect(orders.created.size).toBe(0);
   });
 
   it('fails closed for budget excess, direct overlap, or mismatched grant', async () => {
