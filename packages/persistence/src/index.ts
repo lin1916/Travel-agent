@@ -11,5 +11,6 @@ export * from './repositories/agent-run-repository.js';
 export * from './repositories/traveler-vault-ref-repository.js';
 export * from './repositories/mandate-repository.js';
 export * from './repositories/action-request-repository.js';
+export * from './repositories/booking-repository.js';
 export * from './outbox/outbox-repository.js';
 export * from './inbox/inbox-repository.js';

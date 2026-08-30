@@ -81,3 +81,43 @@ Fix-round 3 verification:
 - `pnpm --filter @travel/api test -- booking.e2e-spec.ts` — 7 files, 27 tests passed.
 
 Remaining concern: a production-grade BookingAuthorization must additionally connect the current mandate evaluator, budget/overlap projections, grant store, audit, and transactional durable BookingIntent/SupplierOrder/outbox repositories. Production booking execution remains disabled until that provider is implemented.
+
+## Fix Round 4
+
+- Added `GovernedBookingAuthorization`, which requires a current approved ActionRequest and current TravelMandate, re-evaluates the immutable command against fresh budget/offer facts, rejects direct itinerary overlap, and fails closed for missing/expired/revoked/mismatched authorization.
+- Added explicit traveler-grant lookup and command binding (intent/version, supplier legal entity, travelers, fields, purpose, offer snapshot, authorization reference), with one-use consumption in the same authorization transaction boundary. Audit and outbox intents are appended from redacted payloads only.
+- Added PostgreSQL `BookingRepository` using migration `009_bookings_orders`, optimistic version CAS, durable commit idempotency via the existing `idempotency_keys` table, supplier-order persistence, owner lookup through the intent join, transactional intent/order/outbox persistence, and append-only migration coverage. Production API wiring remains explicitly fail-closed until a durable repository and grant provider are configured; tests use an isolated governed fixture rather than a permissive fake.
+- Redirect tokens now derive the signature key from the actor identity, require actor and supplier bindings at verification, enforce exactly the five allowed fields, and use a nonce store for replay checks. Booking commits issue actor/supplier-bound redirect URLs for supplier payment pages.
+- Expanded booking API e2e coverage for accepted/payment, rejected, indeterminate/202, order ownership denial, and pause/resume after revalidation with fresh ActionRequest/Mandate/grant bindings.
+
+Fix-round 4 verification:
+
+- `pnpm --filter @travel/domain test -- booking-state-machine.test.ts` — 6 files, 25 tests passed.
+- `pnpm --filter @travel/application test -- booking-service.test.ts` — 4 files, 24 tests passed.
+- `pnpm --filter @travel/supplier-adapters test -- redirect-token.test.ts` — 2 files, 18 tests passed.
+- `pnpm --filter @travel/api test -- booking.e2e-spec.ts` — 7 files, 30 tests passed.
+- `pnpm --filter @travel/persistence test -- migrations.test.ts` — 4 files passed, 3 PostgreSQL integration files skipped because `DATABASE_URL` is unset (8 passed, 7 skipped).
+- `pnpm --filter @travel/application typecheck` — passed.
+- `pnpm --filter @travel/persistence typecheck` — passed.
+
+Remaining concerns: PostgreSQL execution and locking remain unverified without `DATABASE_URL`; production booking remains intentionally unavailable until the durable repository, fresh-facts provider, and vault grant-consume client are configured. The mock supplier remains test-only and no plaintext traveler data is accepted or persisted.
+
+## Fix Round 5
+
+- Moved durable commit-idempotency claims until after offer revalidation and governed authorization succeed, so denied or paused requests do not leave an in-flight claim.
+- Added PostgreSQL booking-repository integration coverage for intent CAS, idempotency replay/conflict, transactional intent/order/outbox/response persistence, and per-aggregate outbox sequence allocation. Outbox sequence allocation now uses a transaction-scoped PostgreSQL advisory lock plus `MAX(sequence) + 1`.
+- Added `GET /v1/supplier-redirects/:supplierId?token=...`, which verifies the actor and supplier binding before returning the stored supplier payment URL.
+
+Fix-round verification:
+
+- `pnpm --filter @travel/domain test -- booking-state-machine.test.ts` — 6 files, 25 tests passed.
+- `pnpm --filter @travel/application test -- booking-service.test.ts` — 4 files, 25 tests passed.
+- `pnpm --filter @travel/supplier-adapters test -- redirect-token.test.ts` — 2 files, 18 tests passed.
+- `pnpm --filter @travel/api test -- booking.e2e-spec.ts` — 7 files, 30 tests passed.
+- `pnpm --filter @travel/persistence test` — 4 files passed, 4 PostgreSQL integration files skipped (8 passed, 10 skipped) because `DATABASE_URL` is unset.
+- `pnpm typecheck` — 13 tasks successful.
+- `pnpm lint` — 13 tasks successful.
+- `pnpm build` — 13 tasks successful.
+- `pnpm test` — 13 tasks successful; package tests passed with only Turbo output-cache warnings.
+
+Remaining concerns: PostgreSQL booking-repository integration and locking are not exercised in this environment without `DATABASE_URL`; production booking remains intentionally fail-closed until the durable repository, current-facts provider, and vault grant-consume client are configured. Redirect replay storage defaults to an in-memory nonce store and should use a durable nonce adapter for multi-instance production deployment.

@@ -3,6 +3,19 @@ import { canTransitionBookingIntent } from './booking-state-machine.js';
 
 export interface BookingIntentAggregate extends BookingIntent {
   selectedOfferSnapshotHash?: string;
+  supplierId?: string;
+  supplierLegalEntity?: string;
+  originalPriceCents?: number;
+  refundRulesHash?: string;
+  refundable?: boolean;
+  travelerDataGrantId?: string;
+  travelerDataGrantExpiresAt?: string;
+  travelerIds?: string[];
+  requestedSensitiveFields?: string[];
+  travelerDataPurpose?: string;
+  startsAt?: string;
+  endsAt?: string;
+  ownerId?: string;
   revalidation?: { unchanged: boolean; currentOfferSnapshotHash: string; priceChanged: boolean; inventoryChanged: boolean; refundRulesChanged: boolean };
 }
 

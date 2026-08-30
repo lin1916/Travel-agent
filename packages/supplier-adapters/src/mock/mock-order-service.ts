@@ -7,6 +7,7 @@ export class MockOrderService {
   constructor(private readonly options: MockOrderOptions = { outcome: 'pending', snapshotHash: 'offer-v1' }) {}
   setSnapshotHash(snapshotHash: string): void { this.options.snapshotHash = snapshotHash; }
   setPriceCents(priceCents: number): void { this.options.priceCents = priceCents; }
+  setOutcome(outcome: CreateOrderResponse['outcome']): void { this.options.outcome = outcome; }
 
   async revalidate(input: RevalidateRequest): Promise<RevalidatedOffer> {
     return {
