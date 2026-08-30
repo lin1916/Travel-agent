@@ -67,3 +67,17 @@ Fix-round 2 verification:
 - `pnpm build` — completed successfully.
 
 Remaining concern: a real PostgreSQL BookingIntent/SupplierOrder repository with transaction/outbox integration remains required before enabling non-test booking execution; the API now fails closed until that adapter exists.
+
+## Fix Round 3
+
+- Added `ActionRequestBookingAuthorization`, which loads the current action record, validates actor ownership, trip, offer resource, booking/commit binding, approval and expiry, then performs the command-bound one-use consume.
+- Expanded API booking coverage with an authorized commit, supplier-order status read, and owner denial.
+- Test-only API wiring supplies an explicit isolated authorization double; non-test execution remains fail-closed pending durable repository/provider wiring.
+
+Fix-round 3 verification:
+
+- `pnpm --filter @travel/application test -- booking-service.test.ts` — 4 files, 22 tests passed.
+- `pnpm --filter @travel/supplier-adapters test -- redirect-token.test.ts` — 2 files, 18 tests passed.
+- `pnpm --filter @travel/api test -- booking.e2e-spec.ts` — 7 files, 27 tests passed.
+
+Remaining concern: a production-grade BookingAuthorization must additionally connect the current mandate evaluator, budget/overlap projections, grant store, audit, and transactional durable BookingIntent/SupplierOrder/outbox repositories. Production booking execution remains disabled until that provider is implemented.

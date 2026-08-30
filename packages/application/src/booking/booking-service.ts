@@ -3,6 +3,7 @@ import type { ActionRequestView, BookingIntentStatus, RevalidationResult, Suppli
 import { createBookingIntent, transitionBookingIntent, type BookingIntentAggregate } from '@travel/domain';
 import type { MockOrderService } from '@travel/supplier-adapters';
 import { ApplicationError } from '../errors.js';
+import { ActionRequestService } from '../action-requests/action-request-service.js';
 
 export interface CommitBookingIntent { intentId: string; expectedVersion: number; actionRequestId?: string; mandateId?: string; idempotencyKey: string; selectedOfferSnapshotHash: string }
 export interface BookingIntentView { id: string; version: number; status: BookingIntentStatus; revalidation?: RevalidationResult }
@@ -10,6 +11,18 @@ export interface CommitBookingResult { intent: BookingIntentView; supplierOrder?
 export interface CreateBookingIntentInput { id: string; tripId: string; offerId: string; offerKind: any; supplierId: string; selectedOfferSnapshotHash: string; originalPriceCents: number; refundRulesHash: string; travelerDataGrantId: string }
 export interface BookingIntentStore { create(intent: BookingIntentAggregate & { [key: string]: unknown }): Promise<void>; get(id: string): Promise<(BookingIntentAggregate & { [key: string]: unknown }) | null>; save(intent: BookingIntentAggregate & { [key: string]: unknown }): Promise<void> }
 export interface BookingAuthorization { authorize(actorId: string, intent: BookingIntentAggregate, input: CommitBookingIntent): Promise<{ consume(): Promise<void> }> }
+
+/** Resolves the current ActionRequest record and binds consumption to this exact booking command. */
+export class ActionRequestBookingAuthorization implements BookingAuthorization {
+  constructor(private readonly actions: ActionRequestService) {}
+  async authorize(actorId: string, intent: BookingIntentAggregate, input: CommitBookingIntent): Promise<{ consume(): Promise<void> }> {
+    if (!input.actionRequestId || input.mandateId) throw new Error('an ActionRequest is required until mandate authorization is implemented');
+    const action = await this.actions.getRecord(input.actionRequestId, actorId);
+    if (action.tripId !== intent.tripId || action.resourceId !== intent.offerId || action.kind !== 'booking' || action.risk !== 'commit') throw new Error('action request does not bind this booking');
+    if (action.status !== 'approved' || Date.parse(action.expiresAt) <= Date.now()) throw new Error('action request is not currently approved');
+    return { consume: async () => { await this.actions.consume(action.id, actorId, action.version, { kind: 'booking', resourceId: intent.offerId, requestHash: action.requestHash }); } };
+  }
+}
 
 export class InMemoryBookingStore implements BookingIntentStore {
   private readonly records = new Map<string, BookingIntentAggregate & { [key: string]: unknown }>();

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BookingServiceImpl, InMemoryBookingStore } from '../src/booking/booking-service.js';
+import { ActionRequestBookingAuthorization, BookingServiceImpl, InMemoryBookingStore } from '../src/booking/booking-service.js';
+import { ActionRequestService } from '../src/action-requests/action-request-service.js';
 import { MockOrderService } from '@travel/supplier-adapters';
 
 const auth = { authorize: async (actorId: string, intent: any, input: any) => { if (actorId !== 'actor-1') throw new Error('forbidden'); if (!input.actionRequestId && !input.mandateId) throw new Error('authorization required'); return { consume: async () => undefined }; } };
@@ -59,5 +60,15 @@ describe('booking service', () => {
     const service = new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService({ outcome: 'pending', snapshotHash: 'offer-v1' }));
     await create(service);
     await expect(service.commit('actor-1', { intentId: 'intent-1', expectedVersion: 1, actionRequestId: 'a', idempotencyKey: 'lookup', selectedOfferSnapshotHash: 'offer-v1' })).rejects.toThrow();
+  });
+
+  it('looks up and consumes an approved action bound to this trip and offer', async () => {
+    const actions = new ActionRequestService();
+    const service = new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService({ outcome: 'pending', snapshotHash: 'offer-v1' }), undefined, new ActionRequestBookingAuthorization(actions));
+    await create(service);
+    const action = await actions.create('actor-1', { tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit' }, { correlationId: 'booking-test' });
+    const approved = await actions.decide(action.id, 'actor-1', { approved: true, reason: 'go', expectedVersion: action.version });
+    await service.commit('actor-1', { intentId: 'intent-1', expectedVersion: 1, actionRequestId: approved.id, idempotencyKey: 'bound', selectedOfferSnapshotHash: 'offer-v1' });
+    expect((await actions.getRecord(approved.id, 'actor-1')).status).toBe('executed');
   });
 });

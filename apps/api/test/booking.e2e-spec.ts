@@ -21,5 +21,11 @@ describe('booking API boundaries', () => {
     expect(created.status).toBe(201);
     const denied = await request(app.getHttpServer()).post('/v1/booking-intents/i-2/commit').set('x-actor-id', 'actor-1').send({ expectedVersion: 1, idempotencyKey: 'k-1', selectedOfferSnapshotHash: 'offer-v1' });
     expect(denied.status).toBe(422);
+    const committed = await request(app.getHttpServer()).post('/v1/booking-intents/i-2/commit').set('x-actor-id', 'actor-1').send({ expectedVersion: 1, actionRequestId: 'test-approved', idempotencyKey: 'k-2', selectedOfferSnapshotHash: 'offer-v1' });
+    expect(committed.status).toBe(202);
+    const order = await request(app.getHttpServer()).get('/v1/supplier-orders/mock-order-001').set('x-actor-id', 'actor-1');
+    expect(order.status).toBe(200);
+    const forbidden = await request(app.getHttpServer()).get('/v1/supplier-orders/mock-order-001').set('x-actor-id', 'actor-2');
+    expect(forbidden.status).toBe(403);
   });
 });
