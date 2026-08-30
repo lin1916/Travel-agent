@@ -11,6 +11,7 @@
     "test:e2e": "playwright test --pass-with-no-tests"
   },
   "dependencies": {
+    "@travel/contracts": "workspace:*",
     "@vitejs/plugin-react": "^4.4.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

@@ -1,0 +1,5 @@
+import type { AgentRunSummary } from '../../lib/api-client';
+import { StatusBadge } from '../common/StatusBadge';
+export function AgentActivityPanel({ run }: { run?: AgentRunSummary }) {
+  return <section aria-label="Agent 活动" className="section-block agent-panel"><div className="section-heading"><h2>Agent 活动</h2>{run && <StatusBadge status={run.status} />}</div>{run ? <><p>{run.assistantMessage}</p>{run.missingFields.length > 0 && <div className="callout"><strong>需要补充</strong><span>{run.missingFields.join('、')}</span></div>}<dl className="activity-meta"><div><dt>来源更新</dt><dd>{run.updatedAt}</dd></div><div><dt>风险级别</dt><dd>只读规划</dd></div><div><dt>工具摘要</dt><dd>{run.toolCallSummaries.length} 项，输出已脱敏</dd></div></dl>{run.toolCallSummaries.map(summary => <div className="activity-row" key={summary.correlationId}><span>{summary.toolName}</span><span>{summary.resultSummary?.source ? String(summary.resultSummary.source) : '已处理'}</span><StatusBadge status={summary.status === 'completed' ? 'completed' : 'warning'} /></div>)}</> : <p className="muted">提交行程后，这里会显示规划进度、来源时间和需要你决定的事项。</p>}</section>;
+}
