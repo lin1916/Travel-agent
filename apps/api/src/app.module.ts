@@ -7,9 +7,11 @@ import { SearchModule } from './modules/search/search.module.js';
 import { AgentModule } from './modules/agent/agent.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { TravelerModule } from './modules/travelers/traveler.module.js';
+import { MandateModule } from './modules/mandates/mandate.module.js';
+import { ActionRequestModule } from './modules/action-requests/action-request.module.js';
 
 @Module({
-  imports: [TripModule, ItineraryModule, BudgetModule, SearchModule, AgentModule, AuthModule, TravelerModule],
+  imports: [TripModule, ItineraryModule, BudgetModule, SearchModule, AgentModule, AuthModule, TravelerModule, MandateModule, ActionRequestModule],
   controllers: [HealthController],
 })
 export class AppModule {}

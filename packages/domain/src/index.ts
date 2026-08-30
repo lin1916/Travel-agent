@@ -4,3 +4,5 @@ export * from './itinerary/warnings.js';
 export * from './budget/ledger.js';
 export * from './budget/policy.js';
 export * from './clock.js';
+export * from './mandate/mandate.js';
+export * from './mandate/policy-evaluator.js';

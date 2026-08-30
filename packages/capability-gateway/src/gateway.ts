@@ -3,10 +3,15 @@ import { CapabilityContextSchema, type CapabilityContext } from './context.js';
 import { PolicyChecker } from './policy-checker.js';
 import type { CapabilityTool } from './tool.js';
 
+export interface ExecutionPolicyCheck {
+  check(context: CapabilityContext, input: unknown, tool: CapabilityTool<unknown, unknown>): Promise<{ allowed: boolean; reason?: string }> | { allowed: boolean; reason?: string };
+}
+export type ExecutionPolicyEvaluator = ExecutionPolicyCheck | ((context: CapabilityContext, input: unknown, tool: CapabilityTool<unknown, unknown>) => Promise<{ allowed: boolean; reason?: string }> | { allowed: boolean; reason?: string });
+
 export class CapabilityGateway {
   private readonly tools = new Map<string, CapabilityTool<unknown, unknown>>();
 
-  constructor(tools: CapabilityTool<unknown, unknown>[] = [], private readonly policyChecker = new PolicyChecker()) {
+  constructor(tools: CapabilityTool<unknown, unknown>[] = [], private readonly policyChecker = new PolicyChecker(), private readonly executionPolicy?: ExecutionPolicyEvaluator) {
     for (const tool of tools) this.register(tool);
   }
 
@@ -40,6 +45,10 @@ export class CapabilityGateway {
     }
     const decision = this.policyChecker.check(tool, context);
     if (!decision.allowed) throw this.policyChecker.blocked(context, decision.reason ?? 'policy denied');
+    if ((tool.risk === 'commit' || tool.risk === 'redirect') && this.executionPolicy) {
+      const executionDecision = await (typeof this.executionPolicy === 'function' ? this.executionPolicy(context, inputResult.data, tool) : this.executionPolicy.check(context, inputResult.data, tool));
+      if (!executionDecision.allowed) throw this.policyChecker.blocked(context, executionDecision.reason ?? 'execution policy denied');
+    }
     return tool.execute(context, inputResult.data) as Promise<O>;
   }
 }
