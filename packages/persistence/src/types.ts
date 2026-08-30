@@ -256,20 +256,37 @@ const SENSITIVE_PAYLOAD_KEYS = new Set([
   'travelerplaintext',
 ]);
 
-const SAFE_TRAVELER_METADATA_KEYS = new Set([
-  'allowedfields',
-  'grantid',
-  'purpose',
-  'travelerdatagrantid',
-  'travelercount',
-  'travelerids',
-  'travelervaultref',
-  'travelerref',
-  'authorizationref',
-]);
+const TRAVELER_REFERENCE_KEYS = new Set(['travelervaultref', 'travelerref']);
+const ALLOWED_TRAVELER_FIELD_NAMES = new Set(['fullName', 'dateOfBirth', 'passportNumber', 'passportExpiry', 'nationality', 'phoneNumber', 'email', 'loyaltyNumber']);
+const ALLOWED_TRAVELER_PURPOSES = new Set(['ticketing', 'booking', 'reservation', 'supplier_fulfillment', 'traveler_verification']);
+const OPAQUE_REFERENCE_PATTERN = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|(?:vault-ref|traveler|ref|grant|decision|intent|trip|offer|order|auth|supplier|external|webhook|local|sha256)(?:[-_:][A-Za-z0-9][A-Za-z0-9._:-]{0,127})+)$/i;
 
 function normalizedPayloadKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function assertTravelerReferenceEnvelope(record: Record<string, unknown>, path: string): void {
+  const entries = Object.entries(record);
+  const envelopeKeys = new Set([...TRAVELER_REFERENCE_KEYS, 'travelerids', 'allowedfields', 'purpose']);
+  if (!entries.some(([key]) => TRAVELER_REFERENCE_KEYS.has(normalizedPayloadKey(key)))) {
+    throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}`);
+  }
+  for (const [key, item] of entries) {
+    const normalizedKey = normalizedPayloadKey(key);
+    if (!envelopeKeys.has(normalizedKey)) throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+    if (TRAVELER_REFERENCE_KEYS.has(normalizedKey)
+      && (typeof item !== 'string' || !OPAQUE_REFERENCE_PATTERN.test(item))) {
+      throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+    }
+    if (normalizedKey === 'allowedfields'
+      && (!Array.isArray(item) || item.length === 0 || item.length > 16
+        || item.some(field => typeof field !== 'string' || !ALLOWED_TRAVELER_FIELD_NAMES.has(field)))) {
+      throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+    }
+    if (normalizedKey === 'purpose' && (typeof item !== 'string' || !ALLOWED_TRAVELER_PURPOSES.has(item))) {
+      throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+    }
+  }
 }
 
 export function assertDurablePayloadSafe(value: unknown, path = 'payload', travelerContext = false): void {
@@ -278,16 +295,41 @@ export function assertDurablePayloadSafe(value: unknown, path = 'payload', trave
     return;
   }
   if (!value || typeof value !== 'object') return;
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+  const record = value as Record<string, unknown>;
+  const hasTravelerReference = Object.keys(record).some(key => TRAVELER_REFERENCE_KEYS.has(normalizedPayloadKey(key)));
+  for (const [key, item] of Object.entries(record)) {
     const normalizedKey = normalizedPayloadKey(key);
     if (SENSITIVE_PAYLOAD_KEYS.has(normalizedKey)) {
       throw new TypeError(`sensitive payload field is not allowed: ${path}.${key}`);
     }
-    if (travelerContext && !SAFE_TRAVELER_METADATA_KEYS.has(normalizedKey)) {
-      throw new TypeError(`traveler plaintext is not allowed: ${path}.${key}`);
+    if (travelerContext) {
+      if (normalizedKey === 'travelerids') {
+        if (!Array.isArray(item) || item.length === 0 || item.length > 16 || item.some(ref => typeof ref !== 'string' || !OPAQUE_REFERENCE_PATTERN.test(ref))) throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+        continue;
+      }
+      if (normalizedKey === 'allowedfields') {
+        if (!Array.isArray(item) || item.length === 0 || item.length > 16 || item.some(field => typeof field !== 'string' || !ALLOWED_TRAVELER_FIELD_NAMES.has(field))) throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+        continue;
+      }
+      if (normalizedKey === 'purpose' && typeof item === 'string' && ALLOWED_TRAVELER_PURPOSES.has(item)) continue;
+      if (TRAVELER_REFERENCE_KEYS.has(normalizedKey) && typeof item === 'string' && OPAQUE_REFERENCE_PATTERN.test(item)) continue;
+      throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
     }
-    const nestedTravelerContext = !SAFE_TRAVELER_METADATA_KEYS.has(normalizedKey)
-      && /(traveler|passenger|guest|customer)/.test(normalizedKey);
+    const nestedTravelerContext = /(traveler|passenger|guest|customer)/.test(normalizedKey)
+      && !TRAVELER_REFERENCE_KEYS.has(normalizedKey);
+    if (nestedTravelerContext) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+      assertTravelerReferenceEnvelope(item as Record<string, unknown>, `${path}.${key}`);
+      continue;
+    }
+    if (TRAVELER_REFERENCE_KEYS.has(normalizedKey)
+      && (typeof item !== 'string' || !OPAQUE_REFERENCE_PATTERN.test(item))) throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+    if (normalizedKey === 'allowedfields'
+      && (!Array.isArray(item) || item.length === 0 || item.length > 16 || item.some(field => typeof field !== 'string' || !ALLOWED_TRAVELER_FIELD_NAMES.has(field)))) throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+    if (normalizedKey === 'travelerids'
+      && (!Array.isArray(item) || item.length === 0 || item.length > 16 || item.some(ref => typeof ref !== 'string' || !OPAQUE_REFERENCE_PATTERN.test(ref)))) throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
+    if (hasTravelerReference && normalizedKey === 'purpose'
+      && (typeof item !== 'string' || !ALLOWED_TRAVELER_PURPOSES.has(item))) throw new TypeError(`sensitive payload field / traveler plaintext is not allowed: ${path}.${key}`);
     assertDurablePayloadSafe(item, `${path}.${key}`, travelerContext || nestedTravelerContext);
   }
 }

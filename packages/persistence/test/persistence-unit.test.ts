@@ -43,7 +43,15 @@ describe('persistence boundary helpers', () => {
 
   it('rejects unknown plaintext nested in traveler-bound objects while allowing vault references and field metadata', () => {
     expect(() => assertDurablePayloadSafe({ traveler: { profile: { preferredAlias: 'Alice' } } })).toThrow(/traveler plaintext/i);
-    expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: 'vault-ref-1', allowedFields: ['preferredAlias'] } })).not.toThrow();
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'] })).not.toThrow();
+  });
+
+  it('rejects plaintext disguised as traveler reference metadata and accepts only opaque reference envelopes', () => {
+    expect(() => assertDurablePayloadSafe({ traveler: { purpose: 'Alice Lovelace' } })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: 'private name' } })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', purpose: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'], purpose: 'ticketing' })).not.toThrow();
+    expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'] } })).not.toThrow();
   });
 
   it('reclaims the raced row identity after an external-event insert conflict', async () => {

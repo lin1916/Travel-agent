@@ -103,3 +103,45 @@ RED/GREEN evidence:
 - GREEN: `pnpm lint` — 13 successful tasks.
 
 PostgreSQL integration behavior remains runtime-unverified in this environment because `DATABASE_URL` is not set.
+
+## Fix Round 3
+
+Closed the remaining traveler-metadata payload gap with an explicit reference envelope:
+
+- `travelerRef` and `travelerVaultRef` values must be opaque identifiers: UUIDs or bounded, whitespace-free identifiers using approved reference prefixes.
+- A nested `traveler`/`passenger`/`guest`/`customer` object must include an opaque reference and may contain only `travelerRef`, `travelerVaultRef`, `travelerIds`, `allowedFields`, and `purpose`.
+- `travelerIds` and `allowedFields` are non-empty arrays capped at 16 entries. Field names are limited to the vault’s defined traveler fields.
+- `purpose` is limited to `ticketing`, `booking`, `reservation`, `supplier_fulfillment`, or `traveler_verification`.
+- Existing top-level redacted references remain accepted with the same reference, field-list, and purpose validation.
+
+RED/GREEN evidence:
+
+- RED: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — the new regression failed because `{ traveler: { purpose: 'Alice Lovelace' } }` and plaintext reference values were accepted. A second RED check proved top-level plaintext purpose could also accompany a valid reference.
+- GREEN: same command — 10 tests passed.
+- GREEN: `pnpm --filter @travel/persistence test` — 14 passed, 18 skipped because `DATABASE_URL` is unset.
+- GREEN: `pnpm --filter @travel/worker test` — 10 passed.
+- GREEN: `pnpm --filter @travel/api exec vitest run test/webhook.e2e-spec.ts test/sse-replay.e2e-spec.ts --reporter=dot` — 6 passed.
+- GREEN: `pnpm typecheck` — 13 successful tasks.
+- GREEN: `pnpm lint` — 13 successful tasks.
+
+PostgreSQL integration behavior remains runtime-unverified because `DATABASE_URL` is not set.
+
+## Fix Round 3
+
+Closed the remaining durable traveler-payload gap with strict value validation:
+
+- Traveler references must be UUIDs or bounded opaque identifiers with approved reference prefixes; human-readable names are rejected.
+- Traveler-bound envelopes permit only `travelerRef`/`travelerVaultRef`, bounded `travelerIds`, the vault-defined `allowedFields`, and approved purpose values (`ticketing`, `booking`, `reservation`, `supplier_fulfillment`, `traveler_verification`).
+- Plaintext disguised as `purpose`, `travelerVaultRef`, or other metadata is rejected, while existing top-level redacted references and nested reference envelopes remain valid.
+
+RED/GREEN evidence:
+
+- RED: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — the new regression failed because plaintext purpose/reference values were accepted.
+- GREEN: same command — 10 tests passed.
+- GREEN: `pnpm --filter @travel/persistence test` — 14 passed, 18 skipped because `DATABASE_URL` is unset.
+- GREEN: `pnpm --filter @travel/worker test` — 10 passed.
+- GREEN: `pnpm --filter @travel/api exec vitest run test/webhook.e2e-spec.ts test/sse-replay.e2e-spec.ts --reporter=dot` — 6 passed.
+- GREEN: `pnpm typecheck` — 13 successful tasks.
+- GREEN: `pnpm lint` — 13 successful tasks.
+
+PostgreSQL integration behavior remains runtime-unverified because `DATABASE_URL` is not set.
