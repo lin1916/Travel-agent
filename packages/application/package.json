@@ -5,18 +5,19 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "prebuild": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build",
+    "prebuild": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "build": "tsc -p tsconfig.json",
-    "pretypecheck": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build",
+    "pretypecheck": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
-    "pretest": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build",
+    "pretest": "pnpm --filter @travel/domain build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@travel/contracts": "workspace:*",
     "@travel/domain": "workspace:*"
     ,"@travel/persistence": "workspace:*"
+    ,"@travel/supplier-adapters": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

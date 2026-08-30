@@ -113,6 +113,18 @@ export interface BudgetDeltaKeysTable {
   applied_at: string;
 }
 
+export interface OffersTable {
+  trip_id: string;
+  offer_id: string;
+  kind: string;
+  supplier_id: string;
+  snapshot_hash: string;
+  source: string;
+  updated_at: string;
+  payload_json: string;
+  created_at: string;
+}
+
 export interface Database {
   trips: TripsTable;
   idempotency_keys: IdempotencyKeysTable;
@@ -124,6 +136,7 @@ export interface Database {
   itinerary_items: ItineraryItemsTable;
   budget_ledgers: BudgetLedgersTable;
   budget_delta_keys: BudgetDeltaKeysTable;
+  offers: OffersTable;
 }
 
 export type TripRow = Selectable<TripsTable>;

@@ -1,0 +1,15 @@
+{
+  "name": "@travel/supplier-adapters",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint . --no-warn-ignored",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": { "@travel/contracts": "workspace:*" },
+  "devDependencies": { "@types/node": "^22.15.3", "eslint": "^9.24.0", "typescript": "^5.8.3", "vitest": "^3.1.1" }
+}

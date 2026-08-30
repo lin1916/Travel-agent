@@ -41,6 +41,9 @@ importers:
       '@travel/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
+      '@travel/supplier-adapters':
+        specifier: workspace:*
+        version: link:../../packages/supplier-adapters
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -148,6 +151,9 @@ importers:
       '@travel/persistence':
         specifier: workspace:*
         version: link:../persistence
+      '@travel/supplier-adapters':
+        specifier: workspace:*
+        version: link:../supplier-adapters
     devDependencies:
       '@types/node':
         specifier: ^22.15.3
@@ -221,6 +227,25 @@ importers:
       tsx:
         specifier: ^4.19.3
         version: 4.23.12
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.1
+        version: 3.2.7(@types/node@22.20.1)(supports-color@7.2.0)(tsx@4.23.12)
+
+  packages/supplier-adapters:
+    dependencies:
+      '@travel/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.20.1
+      eslint:
+        specifier: ^9.24.0
+        version: 9.39.5(supports-color@7.2.0)
       typescript:
         specifier: ^5.8.3
         version: 5.9.3

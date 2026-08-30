@@ -1,0 +1,7 @@
+import { BaseMockAdapter, type RawOffer } from './base-mock-adapter.js';
+import type { FaultMode } from './fault-mode.js';
+const fixture: RawOffer[] = [
+  { id: 'dining-001', kind: 'dining', supplierId: 'mock-dining', title: '本地杭帮菜套餐', amountCents: 18800, locationScore: 0.88, rating: 4.7, refundFlexibility: 0.4, refundSummary: '预约前两小时可取消' },
+  { id: 'dining-002', kind: 'dining', supplierId: 'mock-dining', title: '湖畔素食套餐', amountCents: 12800, locationScore: 0.8, rating: 4.4, refundFlexibility: 0.5, refundSummary: '预约前两小时可取消' },
+];
+export class MockDiningAdapter extends BaseMockAdapter { readonly kind = 'dining' as const; readonly supplierId = 'mock-dining'; protected readonly fixture = fixture; }
