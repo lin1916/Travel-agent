@@ -12,6 +12,7 @@ export class ItineraryController {
   ) {
     if (!actor) throw new ApplicationError('unauthorized');
     await this.tripService.get(tripId, actor);
-    return (await this.itineraryService.list(tripId)).items;
+    const result = await this.itineraryService.list(tripId);
+    return Array.isArray(result) ? result : result.items;
   }
 }
