@@ -9,8 +9,13 @@ export interface CreateTripCommand {
   travelerCount: number;
 }
 
+export interface CreateTripOptions {
+  idempotencyKey: string;
+  totalBudgetCents: number;
+}
+
 export interface TripStore {
-  create(trip: TripRecord, options?: unknown): Promise<TripRecord>;
+  create(trip: TripRecord, options?: CreateTripOptions): Promise<TripRecord>;
   get(id: string): Promise<TripRecord | null>;
   update(
     id: string,
@@ -22,9 +27,29 @@ export interface TripStore {
 
 export class InMemoryTripStore implements TripStore {
   private readonly trips = new Map<string, TripRecord>();
+  private readonly idempotency = new Map<string, { request: string; response: TripRecord }>();
 
-  async create(trip: TripRecord): Promise<TripRecord> {
+  async create(trip: TripRecord, options?: CreateTripOptions): Promise<TripRecord> {
+    if (!options?.idempotencyKey) {
+      throw new ApplicationError('validation_error', 'idempotency key is required');
+    }
+    const request = JSON.stringify({
+      ownerId: trip.ownerId,
+      destination: trip.destination,
+      startsAt: trip.startsAt,
+      endsAt: trip.endsAt,
+      travelerCount: trip.travelerCount,
+      totalBudgetCents: options.totalBudgetCents,
+    });
+    const existing = this.idempotency.get(options.idempotencyKey);
+    if (existing) {
+      if (existing.request !== request) {
+        throw new ApplicationError('conflict', 'idempotency key was reused with a different request');
+      }
+      return structuredClone(existing.response);
+    }
     this.trips.set(trip.id, structuredClone(trip));
+    this.idempotency.set(options.idempotencyKey, { request, response: structuredClone(trip) });
     return structuredClone(trip);
   }
 
@@ -52,7 +77,7 @@ export class InMemoryTripStore implements TripStore {
 export class TripService {
   constructor(private readonly store: TripStore) {}
 
-  async create(ownerId: string, command: CreateTripCommand, options?: unknown): Promise<TripRecord> {
+  async create(ownerId: string, command: CreateTripCommand, options?: CreateTripOptions): Promise<TripRecord> {
     try {
       validateTrip(command);
     } catch (error) {

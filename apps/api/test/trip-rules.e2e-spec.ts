@@ -67,6 +67,12 @@ describe('trip rules API', () => {
   });
 
   it('rejects invalid traveler counts and negative budgets', async () => {
+    const missingKey = await request(app.getHttpServer())
+      .post('/v1/trips')
+      .set('x-actor-id', 'owner-4')
+      .send({ destination: '杭州', startsAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-09-03T00:00:00.000Z', travelerCount: 2 });
+    expect(missingKey.status).toBe(400);
+
     const invalidTravelers = await request(app.getHttpServer())
       .post('/v1/trips')
       .set('x-actor-id', 'owner-4')

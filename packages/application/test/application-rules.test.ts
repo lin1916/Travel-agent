@@ -10,11 +10,23 @@ describe('application rules', () => {
       startsAt: '2026-09-01T00:00:00.000Z',
       endsAt: '2026-09-03T00:00:00.000Z',
       travelerCount: 2,
-    });
+    }, { idempotencyKey: 'trip-create-1', totalBudgetCents: 0 });
     await expect(service.get(trip.id, 'owner-2')).rejects.toMatchObject({ code: 'forbidden' });
     const updated = await service.update(trip.id, 'owner-1', 1, { destination: '苏州' });
     expect(updated.version).toBe(2);
     await expect(service.update(trip.id, 'owner-1', 1, { destination: '南京' })).rejects.toMatchObject({ code: 'conflict' });
+  });
+
+  it('replays an idempotent create and rejects a key reused for another request', async () => {
+    const service = new TripService(new InMemoryTripStore());
+    const command = {
+      destination: '杭州', startsAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-09-03T00:00:00.000Z', travelerCount: 2,
+    };
+    const first = await service.create('owner-1', command, { idempotencyKey: 'replay-1', totalBudgetCents: 0 });
+    const replay = await service.create('owner-1', command, { idempotencyKey: 'replay-1', totalBudgetCents: 0 });
+    expect(replay).toEqual(first);
+    await expect(service.create('owner-1', { ...command, destination: '苏州' }, { idempotencyKey: 'replay-1', totalBudgetCents: 0 }))
+      .rejects.toMatchObject({ code: 'conflict' });
   });
 
   it('rejects a directly overlapping confirmed itinerary item', () => {
