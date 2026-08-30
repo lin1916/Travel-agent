@@ -142,6 +142,17 @@ export interface AgentRunsTable {
   updated_at: string;
 }
 
+export interface TravelerVaultRefsTable {
+  id: string;
+  owner_id: string;
+  vault_traveler_id: string;
+  field_names_json: string;
+  retention_until: string;
+  deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Database {
   trips: TripsTable;
   idempotency_keys: IdempotencyKeysTable;
@@ -155,6 +166,7 @@ export interface Database {
   budget_delta_keys: BudgetDeltaKeysTable;
   offers: OffersTable;
   agent_runs: AgentRunsTable;
+  traveler_vault_refs: TravelerVaultRefsTable;
 }
 
 export type TripRow = Selectable<TripsTable>;

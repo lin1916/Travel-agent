@@ -1,17 +1,34 @@
 {
   "name": "@travel/vault",
   "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
+    "prebuild": "pnpm --filter @travel/security build",
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "pnpm --filter @travel/security build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
+    "pretest": "pnpm --filter @travel/security build",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --passWithNoTests",
     "test:e2e": "vitest run --passWithNoTests"
   },
+  "dependencies": {
+    "@nestjs/common": "^11.0.11",
+    "@nestjs/core": "^11.0.11",
+    "@nestjs/platform-fastify": "^11.0.11",
+    "@travel/security": "workspace:*",
+    "kysely": "^0.28.2",
+    "pg": "^8.14.1",
+    "reflect-metadata": "^0.2.2"
+    ,"rxjs": "^7.8.2"
+  },
   "devDependencies": {
+    "@types/node": "^22.15.3",
+    "@types/pg": "^8.11.11",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "eslint": "^9.24.0",

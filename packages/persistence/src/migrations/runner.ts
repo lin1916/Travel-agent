@@ -4,6 +4,7 @@ import { up as upItineraryBudget } from '../../migrations/002_itinerary_budget.j
 import { up as upOffers } from '../../migrations/003_offers.js';
 import { up as upAgentRuns } from '../../migrations/004_agent_runs.js';
 import { up as upAgentRunSummaries } from '../../migrations/005_agent_run_summaries.js';
+import { up as upVaultRefs } from '../../migrations/006_vault_refs.js';
 import type { Database } from '../types.js';
 
 type Migration = { name: string; up: (db: Kysely<Database>) => Promise<void> };
@@ -14,6 +15,7 @@ export const migrations: Migration[] = [
   { name: '003_offers', up: upOffers },
   { name: '004_agent_runs', up: upAgentRuns },
   { name: '005_agent_run_summaries', up: upAgentRunSummaries },
+  { name: '006_vault_refs', up: upVaultRefs },
 ];
 
 export async function migrateToLatest(db: Kysely<Database>): Promise<void> {
