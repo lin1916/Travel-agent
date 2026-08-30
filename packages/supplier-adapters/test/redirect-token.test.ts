@@ -19,7 +19,8 @@ describe('signed redirect tokens', () => {
 
   it('rejects altered, expired, and replayed tokens', async () => {
     const service = new RedirectTokenServiceImpl('test-key');
-    const token = await service.issue(context, new Date(context.expiresAt));
+    await expect(service.issue(context, new Date(context.expiresAt))).rejects.toThrow(/actor/i);
+    const token = await service.issue(context, new Date(context.expiresAt), 'actor-1');
     await expect(service.verify(`${token}x`, new Date('2026-08-30T00:01:00.000Z'))).rejects.toThrow();
     await expect(service.verify(token, new Date('2026-08-30T00:06:00.000Z'))).rejects.toThrow(/expired/i);
     await service.verify(token, new Date('2026-08-30T00:01:00.000Z'));

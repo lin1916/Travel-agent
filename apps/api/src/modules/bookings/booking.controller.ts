@@ -33,5 +33,5 @@ export class BookingController {
   async get(@Headers('x-actor-id') actorId: string, @Param('intentId') intentId: string) { return this.service.get(intentId, actorId); }
 
   @Get('supplier-orders/:orderId')
-  async order(@Param('orderId') orderId: string) { return this.service.getSupplierOrder(orderId); }
+  async order(@Headers('x-actor-id') actorId: string, @Param('orderId') orderId: string) { if (!actorId) throw new ApplicationError('unauthorized'); return this.service.getSupplierOrder(orderId, actorId); }
 }

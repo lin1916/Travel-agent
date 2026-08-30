@@ -9,6 +9,7 @@ export interface BookingIntentView { id: string; version: number; status: Bookin
 export interface CommitBookingResult { intent: BookingIntentView; supplierOrder?: SupplierOrderSnapshot; redirectUrl?: string; requiresAction?: ActionRequestView }
 export interface CreateBookingIntentInput { id: string; tripId: string; offerId: string; offerKind: any; supplierId: string; selectedOfferSnapshotHash: string; originalPriceCents: number; refundRulesHash: string; travelerDataGrantId: string }
 export interface BookingIntentStore { create(intent: BookingIntentAggregate & { [key: string]: unknown }): Promise<void>; get(id: string): Promise<(BookingIntentAggregate & { [key: string]: unknown }) | null>; save(intent: BookingIntentAggregate & { [key: string]: unknown }): Promise<void> }
+export interface BookingAuthorization { authorize(actorId: string, intent: BookingIntentAggregate, input: CommitBookingIntent): Promise<{ consume(): Promise<void> }> }
 
 export class InMemoryBookingStore implements BookingIntentStore {
   private readonly records = new Map<string, BookingIntentAggregate & { [key: string]: unknown }>();
@@ -20,8 +21,8 @@ export class InMemoryBookingStore implements BookingIntentStore {
 export class BookingServiceImpl {
   private readonly consumedActions = new Set<string>();
   private readonly idempotency = new Map<string, CommitBookingResult>();
-  private readonly supplierOrders = new Map<string, SupplierOrderSnapshot>();
-  constructor(private readonly store: BookingIntentStore, private readonly orders: MockOrderService, private readonly now: () => Date = () => new Date()) {}
+  private readonly supplierOrders = new Map<string, { ownerId: string; snapshot: SupplierOrderSnapshot }>();
+  constructor(private readonly store: BookingIntentStore, private readonly orders: MockOrderService, private readonly now: () => Date = () => new Date(), private readonly authorization?: BookingAuthorization) {}
 
   async create(actorId: string, input: CreateBookingIntentInput): Promise<BookingIntentView> {
     if (!actorId || !input.tripId || !input.travelerDataGrantId) throw new ApplicationError('validation_error', 'actor, trip, and traveler data grant are required');
@@ -43,6 +44,9 @@ export class BookingServiceImpl {
     if (intent.version !== input.expectedVersion) throw new ApplicationError('conflict', 'booking intent version changed');
     if (intent.status !== 'draft' && intent.status !== 'awaiting_user_decision') throw new ApplicationError('conflict', 'booking intent is already committed');
     if (!input.actionRequestId && !input.mandateId) throw new ApplicationError('policy_blocked', 'authorization reference is required');
+    if (!this.authorization) throw new ApplicationError('policy_blocked', 'authorization lookup is unavailable');
+    let authorization: { consume(): Promise<void> };
+    try { authorization = await this.authorization.authorize(actorId, intent, input); } catch (error) { throw new ApplicationError('policy_blocked', error instanceof Error ? error.message : 'authorization denied'); }
     if (input.selectedOfferSnapshotHash !== intent.selectedOfferSnapshotHash) throw new ApplicationError('conflict', 'offer snapshot changed');
     const current = await this.orders.revalidate({ offerId: intent.offerId, supplierId: String(intent.supplierId), offerSnapshotHash: String(intent.selectedOfferSnapshotHash) });
     const revalidation: RevalidationResult = { unchanged: current.snapshotHash === intent.selectedOfferSnapshotHash && current.inventoryAvailable && current.refundRulesHash === intent.refundRulesHash && current.price.amountCents === intent.originalPriceCents, currentOfferSnapshotHash: current.snapshotHash, priceChanged: current.price.amountCents !== intent.originalPriceCents, inventoryChanged: !current.inventoryAvailable, refundRulesChanged: current.refundRulesHash !== intent.refundRulesHash };
@@ -54,6 +58,7 @@ export class BookingServiceImpl {
       this.idempotency.set(`${actorId}:${input.idempotencyKey}`, result);
       return structuredClone(result);
     }
+    await authorization.consume();
     if (input.actionRequestId) this.consumedActions.add(input.actionRequestId);
     let next = intent.status === 'draft' ? transitionBookingIntent(intent, 'awaiting_user_decision') : structuredClone(intent);
     next = transitionBookingIntent(next, 'validating');
@@ -62,7 +67,7 @@ export class BookingServiceImpl {
     const response = await this.orders.createOrder({ intentId: intent.id, offerSnapshotHash: String(intent.selectedOfferSnapshotHash), travelerDataGrantId: String(intent.travelerDataGrantId), executionAuthorizationRef: input.actionRequestId ?? input.mandateId as string, externalIdempotencyKey: `booking:${intent.id}:${input.idempotencyKey}` });
     const supplierOrder = this.orders.toSnapshot(response);
     const orderId = supplierOrder.supplierOrderRef?.supplierOrderId ?? `unknown-${intent.id}`;
-    this.supplierOrders.set(orderId, structuredClone(supplierOrder));
+    this.supplierOrders.set(orderId, { ownerId: actorId, snapshot: structuredClone(supplierOrder) });
     next = response.outcome === 'rejected' ? transitionBookingIntent(next, 'failed') : transitionBookingIntent(next, 'awaiting_supplier');
     await this.store.save(next as BookingIntentAggregate & { [key: string]: unknown });
     const result = { intent: this.view(next), supplierOrder };
@@ -70,11 +75,12 @@ export class BookingServiceImpl {
     return structuredClone(result);
   }
 
-  async getSupplierOrder(orderId: string): Promise<SupplierOrderSnapshot> {
+  async getSupplierOrder(orderId: string, actorId: string): Promise<SupplierOrderSnapshot> {
     const order = this.supplierOrders.get(orderId);
     if (!order) throw new ApplicationError('validation_error', 'supplier order not found');
-    if (order.lifecycleStatus === 'creation_unknown') throw new ApplicationError('unknown_external_result', 'supplier order creation is unresolved');
-    return structuredClone(order);
+    if (order.ownerId !== actorId) throw new ApplicationError('forbidden', 'supplier order belongs to another actor');
+    if (order.snapshot.lifecycleStatus === 'creation_unknown') throw new ApplicationError('unknown_external_result', 'supplier order creation is unresolved');
+    return structuredClone(order.snapshot);
   }
 
   private async authorized(id: string, actorId: string): Promise<BookingIntentAggregate & Record<string, unknown>> {

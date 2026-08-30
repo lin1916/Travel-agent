@@ -6,9 +6,10 @@ export class RedirectTokenServiceImpl implements RedirectTokenService {
   private readonly actors = new Map<string, string>();
   constructor(private readonly key: string) {}
   async issue(input: RedirectContext, expiresAt: Date, actorId?: string): Promise<string> {
+    if (!actorId) throw new Error('actor binding is required');
     const context = { intentId: input.intentId, supplierId: input.supplierId, nonce: input.nonce || randomUUID(), issuedAt: input.issuedAt, expiresAt: expiresAt.toISOString() };
     const payload = Buffer.from(JSON.stringify(context)).toString('base64url');
-    if (actorId) this.actors.set(context.nonce, actorId);
+    this.actors.set(context.nonce, actorId);
     return `${payload}.${this.sign(payload)}`;
   }
   async verify(token: string, now: Date, binding?: { actorId?: string; supplierId?: string }): Promise<RedirectContext> {

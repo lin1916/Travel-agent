@@ -49,3 +49,21 @@ Fix-round verification:
 - `pnpm --filter @travel/domain test -- booking-state-machine.test.ts` — 6 files, 25 tests passed.
 
 Remaining concerns: durable PostgreSQL booking/order repositories and full evaluator/outbox integration remain follow-up work; production execution is fail-closed without `DATABASE_URL`.
+
+## Fix Round 2
+
+- Added explicit `BookingAuthorization` lookup/consume dependency; commits fail closed when authorization lookup is unavailable and consume the authorization before supplier creation.
+- Enforced actor ownership on supplier-order lookup and made redirect actor binding mandatory at token issuance.
+- Added regression coverage for unavailable authorization and mandatory redirect actor binding.
+- Production booking module now refuses to start without a durable PostgreSQL booking repository implementation, preventing process-local Maps from becoming production business truth.
+
+Fix-round 2 verification:
+
+- `pnpm --filter @travel/application test -- booking-service.test.ts` — 4 files, 21 tests passed.
+- `pnpm --filter @travel/supplier-adapters test -- redirect-token.test.ts` — 2 files, 18 tests passed.
+- `pnpm --filter @travel/api test -- bookings` — 7 files, 27 tests passed.
+- `pnpm typecheck` — 13 tasks successful.
+- `pnpm lint` — 13 tasks successful.
+- `pnpm build` — completed successfully.
+
+Remaining concern: a real PostgreSQL BookingIntent/SupplierOrder repository with transaction/outbox integration remains required before enabling non-test booking execution; the API now fails closed until that adapter exists.
