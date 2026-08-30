@@ -57,4 +57,12 @@ describe('CapabilityGateway', () => {
     expect(normal).toBe('ok');
     expect(injected).toBe(normal);
   });
+
+  it('fails closed for commit capabilities when no execution evaluator is configured', async () => {
+    const commitTool: CapabilityTool<{ value: string }, string> = {
+      name: 'commit-without-evaluator', risk: 'commit', inputSchema: z.object({ value: z.string() }), execute: async () => 'committed',
+    };
+    const authenticated = { ...context, requestedRisk: 'commit' as const, actorAuthenticated: true };
+    await expect(new CapabilityGateway([commitTool]).execute(commitTool.name, authenticated, { value: 'x' })).rejects.toMatchObject({ code: 'policy_blocked' });
+  });
 });

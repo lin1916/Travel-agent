@@ -154,7 +154,7 @@ export interface TravelerVaultRefsTable {
 }
 
 export interface MandatesTable { id: string; version: number; trip_id: string; owner_id: string; payload_json: string; policy_hash: string; actor_id: string; created_at: string; valid_until: string; revoked_at: string | null }
-export interface ActionRequestsTable { id: string; trip_id: string; owner_id: string; version: number; status: string; payload_json: string; request_hash: string; policy_snapshot_json: string | null; decision_actor_id: string | null; decision_reason: string | null; correlation_id: string; expires_at: string; created_at: string }
+export interface ActionRequestsTable { id: string; trip_id: string; owner_id: string; version: number; status: string; payload_json: string; request_hash: string; policy_snapshot_json: string | null; decision_actor_id: string | null; decision_reason: string | null; correlation_id: string; expires_at: string; consumed_at: string | null; created_at: string }
 
 export interface Database {
   trips: TripsTable;

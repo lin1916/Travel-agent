@@ -20,7 +20,11 @@ import { TRIP_SERVICE } from '../trips/trip.providers.js';
       useFactory: (searchService: SearchService, tripService: { getAny(id: string): Promise<{ id: string; version: number; ownerId: string } | null> }) => {
         if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'test') throw new Error('DATABASE_URL is required for durable agent runs');
         const persistence = process.env.DATABASE_URL ? new AgentRunRepository(createDatabase()) : undefined;
-        return new PlanningOrchestrator(new RuleBasedProvider(), new CapabilityGateway(createPlanningTools(searchService)), persistence, tripService);
+        const executionPolicy = async (context: { actionRequestId?: string; mandateId?: string }, _input: unknown, _tool: unknown) => ({
+            allowed: Boolean(context.actionRequestId && context.mandateId),
+            reason: 'latest mandate and single-use action decision are required for external side effects',
+        });
+        return new PlanningOrchestrator(new RuleBasedProvider(), new CapabilityGateway(createPlanningTools(searchService), undefined, executionPolicy), persistence, tripService);
       },
     },
   ],

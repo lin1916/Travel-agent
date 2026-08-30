@@ -59,4 +59,22 @@ describe('execution policy', () => {
     expect(store.get(first.id, 'owner-1', 1)?.maxSingleOrderAmount.amountCents).toBe(50_000);
     expect(store.revoke(first.id, 'owner-1', 2).version).toBe(3);
   });
+
+  it('rejects duplicate mandate ids instead of overwriting history', () => {
+    const store = new MandateStore();
+    store.create('owner-1', mandate());
+    expect(() => store.create('owner-1', mandate())).toThrow(/already exists/i);
+  });
+
+  it('fails closed when booking execution facts are missing', () => {
+    const decision = evaluateExecutionPolicy({ tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit', requestedAmount: { amountCents: 1000, currency: 'CNY' } }, mandate(), snapshot());
+    expect(decision.allowed).toBe(false);
+    expect(decision.reasons.map(reason => reason.code)).toEqual(expect.arrayContaining(['supplier_required', 'booking_type_required', 'refundability_required', 'offer_snapshot_required']));
+  });
+
+  it('rejects unknown or budget override actions by default', () => {
+    const decision = evaluateExecutionPolicy({ tripId: 'trip-1', resourceId: 'x', kind: 'budget_override', risk: 'commit' }, mandate(), snapshot());
+    expect(decision.allowed).toBe(false);
+    expect(decision.reasons.some(reason => reason.code === 'action_not_authorized')).toBe(true);
+  });
 });

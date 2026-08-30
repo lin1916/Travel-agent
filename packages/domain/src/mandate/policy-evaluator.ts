@@ -10,6 +10,16 @@ export function evaluateExecutionPolicy(action: ActionRequestInput, mandate: Tra
   const reasons: PolicyReason[] = [];
   const fresh = (code: string, message: string) => reasons.push(reason(code, message));
   const highRisk = action.risk === 'commit' || action.risk === 'redirect';
+  if (action.kind === 'budget_override') fresh('action_not_authorized', 'budget overrides require a new explicit mandate');
+  if (highRisk && action.kind === 'booking') {
+    if (!action.supplierId) fresh('supplier_required', 'supplier is required for booking execution');
+    if (!action.bookingType) fresh('booking_type_required', 'booking type is required for booking execution');
+    if (action.refundable === undefined) fresh('refundability_required', 'refundability is required for booking execution');
+    if (!action.offerSnapshotHash) fresh('offer_snapshot_required', 'offer snapshot is required for booking execution');
+  }
+  if (highRisk && action.kind === 'traveler_data' && (!action.requestedSensitiveFields || action.requestedSensitiveFields.length === 0)) {
+    fresh('sensitive_fields_required', 'requested sensitive fields are required');
+  }
   if (!mandate) {
     if (highRisk || action.kind === 'traveler_data' || action.kind === 'cancel' || action.kind === 'refund') {
       fresh('user_confirmation_required', 'a fresh user decision is required for this action');

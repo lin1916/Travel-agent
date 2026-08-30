@@ -31,3 +31,19 @@
 - API modules currently use the mandated in-memory fallback; PostgreSQL tables/migration are present, but durable repositories are intentionally deferred to the persistence task boundary.
 - Mandate policy hashes use a deterministic lightweight local hash because `@travel/domain` does not depend on Node typings; cryptographic audit hashing should be centralized when the persistence/audit layer lands.
 - Gateway recheck is injectable and enforced when supplied; existing read/prepare planning behavior remains unchanged.
+
+## Fix round 1
+
+- Added RED regressions for duplicate mandate IDs, missing booking execution facts, unauthorized budget overrides, command-bound ActionRequest consumption, and fail-closed Gateway side effects.
+- Wired API mandate/action modules to PostgreSQL repositories whenever `DATABASE_URL` is configured; in-memory stores are available only under `NODE_ENV=test` without a database URL.
+- Added append-only `MandateRepository`, durable `ActionRequestRepository`, trip-scoped mandate listing, strict `/decisions` request validation, and legacy decision-path compatibility.
+- Added forward-only migration `008_action_request_consumed_at` and consumed timestamp persistence.
+- Gateway now rejects commit/redirect execution when no evaluator is configured; AgentModule supplies a production evaluator requiring mandate and single-use action context.
+- ActionRequest consumption validates kind/resource/request hash and persists a one-time executed state.
+
+Fix-round tests: `pnpm --filter @travel/domain test -- mandate-policy.test.ts` (5 files, 22 passed); `pnpm --filter @travel/application test -- action-request-service.test.ts` (3 files, 15 passed); `pnpm --filter @travel/capability-gateway test -- gateway.test.ts` (1 file, 5 passed); `pnpm --filter @travel/persistence test -- migrations.test.ts` (4 files, 7 passed, 6 integration skipped); `pnpm --filter @travel/api test -- mandates` (5 files, 23 passed). Typechecks/builds for API, application, domain, capability-gateway, and persistence all passed.
+
+Remaining concerns:
+
+- PostgreSQL integration tests remain skipped when `DATABASE_URL` is unset; repository SQL paths were typechecked but not exercised against a live PostgreSQL instance.
+- Gateway production evaluator currently enforces presence of `mandateId` and `actionRequestId`; full mandate lookup and one-time decision consumption should be connected when booking side-effect tools are introduced.

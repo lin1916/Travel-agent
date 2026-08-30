@@ -45,7 +45,8 @@ export class CapabilityGateway {
     }
     const decision = this.policyChecker.check(tool, context);
     if (!decision.allowed) throw this.policyChecker.blocked(context, decision.reason ?? 'policy denied');
-    if ((tool.risk === 'commit' || tool.risk === 'redirect') && this.executionPolicy) {
+    if (tool.risk === 'commit' || tool.risk === 'redirect') {
+      if (!this.executionPolicy) throw this.policyChecker.blocked(context, 'execution policy evaluator is required for external side effects');
       const executionDecision = await (typeof this.executionPolicy === 'function' ? this.executionPolicy(context, inputResult.data, tool) : this.executionPolicy.check(context, inputResult.data, tool));
       if (!executionDecision.allowed) throw this.policyChecker.blocked(context, executionDecision.reason ?? 'execution policy denied');
     }

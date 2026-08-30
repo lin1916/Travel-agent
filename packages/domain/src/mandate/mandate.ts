@@ -21,6 +21,7 @@ export class MandateStore {
 
   create(ownerId: string, input: Omit<TravelMandate, 'version' | 'revokedAt'>, actorId = ownerId, now = new Date().toISOString()): VersionedMandate {
     const created = createMandateVersion(ownerId, actorId, input, now);
+    if (this.histories.has(created.id)) throw new Error('mandate already exists');
     this.histories.set(created.id, [created]);
     return structuredClone(created);
   }
@@ -30,6 +31,13 @@ export class MandateStore {
     const found = version === undefined ? history[history.length - 1] : history.find(item => item.version === version);
     if (!found || (ownerId && found.ownerId !== ownerId)) return null;
     return structuredClone(found);
+  }
+
+  listByTrip(tripId: string, ownerId: string): VersionedMandate[] {
+    return [...this.histories.values()].flatMap(history => {
+      const latest = history[history.length - 1];
+      return latest && latest.tripId === tripId && latest.ownerId === ownerId ? [structuredClone(latest)] : [];
+    });
   }
 
   amend(id: string, ownerId: string, expectedVersion: number, patch: Partial<Omit<TravelMandate, 'id' | 'tripId' | 'version' | 'revokedAt'>>, actorId = ownerId, now = new Date().toISOString()): VersionedMandate {
