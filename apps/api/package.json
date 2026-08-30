@@ -3,18 +3,20 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch src/main.ts",
-    "prebuild": "pnpm --filter @travel/application build",
+    "prebuild": "pnpm --filter @travel/agent-runtime build && pnpm --filter @travel/application build",
     "build": "tsc -p tsconfig.json",
     "pretypecheck": "pnpm --filter @travel/application build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
-    "pretest": "pnpm --filter @travel/application build",
+    "pretest": "pnpm --filter @travel/agent-runtime build && pnpm --filter @travel/application build",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --passWithNoTests",
     "test:e2e": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@travel/application": "workspace:*",
+    "@travel/agent-runtime": "workspace:*",
+    "@travel/capability-gateway": "workspace:*",
     "@travel/contracts": "workspace:*",
     "@travel/persistence": "workspace:*",
     "@travel/supplier-adapters": "workspace:*",

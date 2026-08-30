@@ -125,6 +125,22 @@ export interface OffersTable {
   created_at: string;
 }
 
+export interface AgentRunsTable {
+  id: string;
+  trip_id: string;
+  actor_id: string | null;
+  status: string;
+  user_message: string;
+  assistant_message: string;
+  missing_fields_json: string;
+  tool_calls_json: string;
+  action_requests_json: string;
+  next_step: string | null;
+  current_trip_version: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Database {
   trips: TripsTable;
   idempotency_keys: IdempotencyKeysTable;
@@ -137,6 +153,7 @@ export interface Database {
   budget_ledgers: BudgetLedgersTable;
   budget_delta_keys: BudgetDeltaKeysTable;
   offers: OffersTable;
+  agent_runs: AgentRunsTable;
 }
 
 export type TripRow = Selectable<TripsTable>;

@@ -2,6 +2,7 @@ import type { Kysely } from 'kysely';
 import { up as upCore } from '../../migrations/001_core.js';
 import { up as upItineraryBudget } from '../../migrations/002_itinerary_budget.js';
 import { up as upOffers } from '../../migrations/003_offers.js';
+import { up as upAgentRuns } from '../../migrations/004_agent_runs.js';
 import type { Database } from '../types.js';
 
 type Migration = { name: string; up: (db: Kysely<Database>) => Promise<void> };
@@ -10,6 +11,7 @@ const migrations: Migration[] = [
   { name: '001_core', up: upCore },
   { name: '002_itinerary_budget', up: upItineraryBudget },
   { name: '003_offers', up: upOffers },
+  { name: '004_agent_runs', up: upAgentRuns },
 ];
 
 export async function migrateToLatest(db: Kysely<Database>): Promise<void> {

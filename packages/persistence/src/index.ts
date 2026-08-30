@@ -7,5 +7,6 @@ export * from './repositories/task-repository.js';
 export * from './repositories/event-repository.js';
 export * from './repositories/itinerary-repository.js';
 export * from './repositories/budget-repository.js';
+export * from './repositories/agent-run-repository.js';
 export * from './outbox/outbox-repository.js';
 export * from './inbox/inbox-repository.js';

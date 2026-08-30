@@ -6,3 +6,33 @@ export interface TaskOutcome { status: 'completed'|'retry'|'dead_letter'; retryA
 export interface AuditEntry { actorId: string; action: string; resource: string; policyResult: string; reason?: string; mandateVersion?: number; grantRef?: string; requestId: string; correlationId: string; occurredAt: string }
 export interface AuditView extends AuditEntry { id: string; supplierId?: string; allowedFields?: string[] }
 export interface LogEvent { name: string; requestId: string; correlationId: string; fields?: Record<string, unknown> }
+
+export const AgentRunStatusSchema = z.enum(['running', 'awaiting_input', 'completed', 'failed']);
+export type AgentRunStatus = z.infer<typeof AgentRunStatusSchema>;
+export const AgentRunEventTypeSchema = z.enum(['AgentRunCreated', 'AgentRunUpdated', 'AgentRunCompleted', 'AgentRunFailed']);
+export type AgentRunEventType = z.infer<typeof AgentRunEventTypeSchema>;
+
+export interface AgentContext {
+  actorId?: string;
+  tripId: string;
+  agentRunId: string;
+  userMessage: string;
+  currentTripVersion: number;
+  redactedOffers: import('./search.js').NormalizedOffer[];
+}
+
+export interface StructuredAgentOutput {
+  assistantMessage: string;
+  missingFields: string[];
+  toolCalls: Array<{ toolName: string; input: unknown }>;
+  actionRequests: Array<{ kind: string; resourceId: string }>;
+}
+
+export interface ToolCallSummary {
+  toolName: string;
+  risk: import('./money.js').RiskLevel;
+  status: 'completed' | 'blocked' | 'failed';
+  inputSummary?: Record<string, unknown>;
+  resultSummary?: Record<string, unknown>;
+  correlationId: string;
+}

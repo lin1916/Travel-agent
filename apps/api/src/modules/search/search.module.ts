@@ -25,5 +25,6 @@ export const SEARCH_TASK_QUEUE = Symbol('SEARCH_TASK_QUEUE');
       },
     },
   ],
+  exports: [SEARCH_SERVICE],
 })
 export class SearchModule {}

@@ -1,0 +1,43 @@
+import { createAppError, RiskLevelSchema } from '@travel/contracts';
+import { CapabilityContextSchema, type CapabilityContext } from './context.js';
+import { PolicyChecker } from './policy-checker.js';
+import type { CapabilityTool } from './tool.js';
+
+export class CapabilityGateway {
+  private readonly tools = new Map<string, CapabilityTool<unknown, unknown>>();
+
+  constructor(tools: CapabilityTool<unknown, unknown>[] = [], private readonly policyChecker = new PolicyChecker()) {
+    for (const tool of tools) this.register(tool);
+  }
+
+  register<I, O>(tool: CapabilityTool<I, O>): void {
+    if (this.tools.has(tool.name)) throw new Error(`capability already registered: ${tool.name}`);
+    this.tools.set(tool.name, tool as CapabilityTool<unknown, unknown>);
+  }
+
+  has(name: string): boolean { return this.tools.has(name); }
+
+  list(): string[] { return [...this.tools.keys()]; }
+
+  async execute<O>(name: string, rawContext: CapabilityContext, input: unknown): Promise<O> {
+    const contextResult = CapabilityContextSchema.safeParse(rawContext);
+    if (!contextResult.success) {
+      throw createAppError('validation_error', rawContext?.correlationId ?? 'unknown', contextResult.error.issues[0]?.message);
+    }
+    const context = contextResult.data;
+    const tool = this.tools.get(name);
+    if (!tool) throw this.policyChecker.blocked(context, `tool is not allow-listed: ${name}`);
+    if (!RiskLevelSchema.safeParse(tool.risk).success) throw createAppError('validation_error', context.correlationId, `invalid risk level for tool: ${name}`);
+
+    const inputResult = tool.inputSchema.safeParse(input);
+    if (!inputResult.success) {
+      throw createAppError('validation_error', context.correlationId, inputResult.error.issues[0]?.message);
+    }
+    if (input && typeof input === 'object' && 'tripId' in input && (input as { tripId?: unknown }).tripId !== context.tripId) {
+      throw this.policyChecker.blocked(context, 'tool input trip does not match capability context');
+    }
+    const decision = this.policyChecker.check(tool, context);
+    if (!decision.allowed) throw this.policyChecker.blocked(context, decision.reason ?? 'policy denied');
+    return tool.execute(context, inputResult.data) as Promise<O>;
+  }
+}
