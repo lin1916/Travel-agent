@@ -5,8 +5,10 @@ import {
   canonicalRequestJson,
   eventToRow,
   DatabaseConfigurationError,
+  assertDurablePayloadSafe,
 } from '../src/types.js';
 import { ActionRequestRepository } from '../src/repositories/action-request-repository.js';
+import { outboxRowToEnvelope } from '../src/outbox/outbox-repository.js';
 
 describe('persistence boundary helpers', () => {
   it('fails closed when PostgreSQL configuration is absent', () => {
@@ -28,6 +30,24 @@ describe('persistence boundary helpers', () => {
     });
     expect(row.payload_json).toBe(JSON.stringify({ travelerRef: 'vault-ref-1' }));
     expect(row.payload_json).not.toContain('身份证');
+  });
+
+  it('rejects traveler plaintext fields before durable serialization', () => {
+    expect(() => assertDurablePayloadSafe({ orderId: 'order-1', passportNumber: 'plaintext-value' })).toThrow(/sensitive payload field/i);
+    expect(() => assertDurablePayloadSafe({ traveler: { fullName: 'plaintext-value' } })).toThrow(/sensitive payload field/i);
+    expect(() => assertDurablePayloadSafe({ rawBody: '[REDACTED]' })).toThrow(/sensitive payload field/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'] })).not.toThrow();
+  });
+
+  it('converts a legacy redacted outbox payload into an EventEnvelope', () => {
+    expect(outboxRowToEnvelope({
+      event_id: 'event-legacy', event_type: 'BookingIntentCommitted', aggregate_type: 'BookingIntent', aggregate_id: 'intent-1',
+      sequence: 1, payload_json: '{"lifecycleStatus":"payment_unknown"}', created_at: '2026-08-29T12:00:00.000Z',
+    })).toEqual({
+      event_id: 'event-legacy', event_type: 'BookingIntentCommitted', aggregate_type: 'BookingIntent', aggregate_id: 'intent-1',
+      sequence: 1, schema_version: 1, occurred_at: '2026-08-29T12:00:00.000Z', request_id: 'legacy:event-legacy',
+      correlation_id: 'legacy:event-legacy', redacted_payload: { lifecycleStatus: 'payment_unknown' },
+    });
   });
 
   it('hashes equivalent requests identically regardless of object key order', () => {

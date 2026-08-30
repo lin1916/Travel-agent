@@ -9,6 +9,7 @@ describe('state machine contracts', () => {
 
   it('accepts separate supplier order lifecycle statuses', () => {
     expect(SupplierOrderLifecycleSchema.parse('creation_unknown')).toBe('creation_unknown');
+    expect(SupplierOrderLifecycleSchema.parse('cancellation_unknown')).toBe('cancellation_unknown');
     expect(SupplierOrderLifecycleSchema.safeParse('completed').success).toBe(false);
   });
 });

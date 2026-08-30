@@ -4,18 +4,28 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
+    "prebuild": "pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "build": "tsc -p tsconfig.json",
+    "pretypecheck": "pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
+    "pretest": "pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --passWithNoTests",
     "test:e2e": "vitest run --passWithNoTests"
   },
   "devDependencies": {
+    "@types/node": "^22.15.3",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "eslint": "^9.24.0",
     "vitest": "^3.1.1"
+  },
+  "dependencies": {
+    "@travel/application": "workspace:*",
+    "@travel/contracts": "workspace:*",
+    "@travel/persistence": "workspace:*",
+    "@travel/supplier-adapters": "workspace:*"
   },
   "type": "module"
 }

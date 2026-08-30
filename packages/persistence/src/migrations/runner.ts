@@ -8,6 +8,7 @@ import { up as upVaultRefs } from '../../migrations/006_vault_refs.js';
 import { up as upMandatesActions } from '../../migrations/007_mandates_actions.js';
 import { up as upActionRequestConsumedAt } from '../../migrations/008_action_request_consumed_at.js';
 import { up as upBookingsOrders } from '../../migrations/009_bookings_orders.js';
+import { up as upWebhooksReconciliation } from '../../migrations/010_webhooks_reconciliation.js';
 import type { Database } from '../types.js';
 
 type Migration = { name: string; up: (db: Kysely<Database>) => Promise<void> };
@@ -22,6 +23,7 @@ export const migrations: Migration[] = [
   { name: '007_mandates_actions', up: upMandatesActions },
   { name: '008_action_request_consumed_at', up: upActionRequestConsumedAt },
   { name: '009_bookings_orders', up: upBookingsOrders },
+  { name: '010_webhooks_reconciliation', up: upWebhooksReconciliation },
 ];
 
 export async function migrateToLatest(db: Kysely<Database>): Promise<void> {

@@ -11,3 +11,4 @@ export { MandateStore } from '@travel/domain';
 export { evaluateExecutionPolicy } from '@travel/domain';
 export * from './booking/booking-service.js';
 export * from './booking/revalidation-service.js';
+export * from './reconciliation/reconciliation-service.js';

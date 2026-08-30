@@ -1,0 +1,65 @@
+# Task 11 report — Worker tasks, delivery, webhooks, reconciliation, and SSE replay
+
+Date: 2026-08-30
+Base: `ad7e624`
+
+## Implemented behavior
+
+- Added lease-based worker execution with PostgreSQL-compatible task-store contracts, owner-qualified heartbeat/retry/completion, lease expiry reclaim, exponential retry backoff, explicit retry ceilings, and visible dead-letter outcomes.
+- Added worker jobs for search persistence, booking execution injection, supplier polling, reconciliation, webhook updates, and outbox dispatch. Search results are persisted idempotently in `offers` and emit a redacted `SearchCompleted` event.
+- Added Inbox claim/release semantics. Outbox dispatch is deduplicated per consumer; failed delivery releases only that claim so a later attempt can retry.
+- Added HMAC webhook verification over the exact raw body plus timestamp, constant-time signature comparison, stale timestamp rejection, external-event identity checks, adapter parsing, duplicate-event rejection, and deterministic reference-only `webhook_update` tasks.
+- Added reconciliation for creation/payment/cancellation unknown states, bounded supplier attempts, matched snapshots, discrepancy/manual-review handling, and redacted `SupplierOrderReconciled` / `ReconciliationRequired` events. Unknown or contradictory supplier results never become success.
+- Added forward-only migration `010_webhooks_reconciliation` for webhook receipts, Trip-scoped event/outbox fields, supplier-order reconciliation fields, indexes, and legacy outbox-to-event-history backfill.
+- Added ordered event history with per-aggregate sequence allocation, global stream positions, Trip ownership authorization, `Last-Event-ID` replay, live polling follow-up, and SSE controller output limited to validated/redacted `EventEnvelope` fields.
+- Added durable payload guards rejecting traveler plaintext, raw body, payment-card, identity, and similar sensitive keys before task/event/offer serialization.
+- Kept non-test API/worker paths fail-closed when required PostgreSQL or webhook-secret providers are unavailable.
+
+## Files changed
+
+- Worker: `apps/worker/src/task-runner.ts`, `apps/worker/src/jobs/*.ts`, `apps/worker/src/main.ts`, `apps/worker/test/task-recovery.test.ts`, `apps/worker/package.json`
+- API: webhook and event modules/controllers/services, `apps/api/src/app.module.ts`, `apps/api/src/main.ts`, `apps/api/src/modules/search/search.module.ts`, `apps/api/test/webhook.e2e-spec.ts`, `apps/api/test/sse-replay.e2e-spec.ts`
+- Application: reconciliation service and tests, exports
+- Contracts: cancellation-unknown lifecycle and contract test
+- Persistence: migration `010_webhooks_reconciliation.ts`, task/outbox/inbox/event/booking/webhook/offer repositories, types, migration registration, integration/unit tests
+- Existing `progress.md` was preserved and not staged.
+
+## RED and GREEN evidence
+
+- Worker RED: `pnpm --filter @travel/worker test -- task-recovery.test.ts` failed with missing `outbox-dispatch-job.js` / `task-runner.js`; GREEN: 6 tests passed.
+- Persistence RED: migration/payload tests failed because `010_webhooks_reconciliation` and `assertDurablePayloadSafe` were absent; GREEN: persistence unit/migration tests passed.
+- Webhook RED: `pnpm --filter @travel/api test -- webhook.e2e-spec.ts` failed with missing webhook modules; GREEN: 3 webhook tests plus API suite passed.
+- Reconciliation RED: `pnpm --filter @travel/application test -- reconciliation-service.test.ts` failed with missing service; GREEN: 3 reconciliation tests plus application suite passed.
+- SSE RED: `pnpm --filter @travel/api test -- sse-replay.e2e-spec.ts` failed with missing event-stream service; GREEN: 3 SSE tests plus API suite passed.
+- Additional RED/GREEN cycles covered explicit retry ceiling, Inbox claim release on failed delivery, legacy outbox conversion, sensitive raw-body rejection, and idempotent search persistence.
+
+## Focused verification
+
+- `pnpm --filter @travel/worker test` — 1 file, 6 passed.
+- `pnpm --filter @travel/api test -- webhook.e2e-spec.ts` — 9 files, 36 passed.
+- `pnpm --filter @travel/api test -- sse-replay.e2e-spec.ts` — 9 files, 36 passed.
+- `pnpm --filter @travel/application test -- reconciliation-service.test.ts` — 5 files, 32 passed.
+- `pnpm --filter @travel/persistence test` — 10 passed, 16 skipped in four existing PostgreSQL suites plus 1 new PostgreSQL webhook suite skipped.
+- `pnpm typecheck` — 13 successful tasks.
+- `pnpm lint` — 13 successful tasks.
+- `pnpm security:scan-sensitive-output` — no production traveler-sensitive matches introduced.
+- `pnpm test` — 13 successful packages; all available tests passed.
+
+## PostgreSQL execution / skip status
+
+`DATABASE_URL` was not set in this environment. PostgreSQL integration suites compiled and were conditionally skipped by their existing `describe.skip` pattern. No runtime PostgreSQL verification is claimed.
+
+## Self-review
+
+- Confirmed `git diff --check` is clean.
+- Confirmed migration history remains forward-only; migrations `001`–`009` were not edited.
+- Confirmed no process-local business Maps were added to production persistence paths.
+- Confirmed webhook tasks contain supplier/order references only, never raw body or supplier status.
+- Confirmed stale worker owners cannot heartbeat/retry/complete after lease expiry or reclaim.
+- Confirmed event replay authorizes actor + Trip and validates/redacts envelopes before emission.
+
+## Concerns
+
+- Live SSE follow-up uses bounded PostgreSQL polling rather than a push broker, as required for V1; production tuning may adjust the poll interval.
+- Runtime PostgreSQL behavior remains unverified until a reachable `DATABASE_URL` is supplied.
+- Existing test-only in-memory booking/search providers remain in test composition roots; production paths fail closed where durable providers are required.

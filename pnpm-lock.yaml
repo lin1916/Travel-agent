@@ -169,7 +169,23 @@ importers:
         version: 3.2.7(@types/node@22.20.1)(supports-color@7.2.0)(tsx@4.23.12)
 
   apps/worker:
+    dependencies:
+      '@travel/application':
+        specifier: workspace:*
+        version: link:../../packages/application
+      '@travel/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@travel/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
+      '@travel/supplier-adapters':
+        specifier: workspace:*
+        version: link:../../packages/supplier-adapters
     devDependencies:
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.20.1
       eslint:
         specifier: ^9.24.0
         version: 9.39.5(supports-color@7.2.0)

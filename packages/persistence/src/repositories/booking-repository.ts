@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { SupplierOrderSnapshot } from '@travel/contracts';
-import { sql, type Kysely } from 'kysely';
+import type { EventEnvelope, ReconciliationStatus, SupplierOrderLifecycle, SupplierOrderRef, SupplierOrderSnapshot } from '@travel/contracts';
+import type { Kysely } from 'kysely';
 import { withTransaction, type DatabaseTransaction } from '../db.js';
 import { IdempotencyRepository, type IdempotencyClaim } from './idempotency-repository.js';
 import { RepositoryConflictError, type BookingIntentsTable, type SupplierOrdersTable, type Database } from '../types.js';
+import { EventRepository } from './event-repository.js';
 
 export interface BookingIntentRecord {
   id: string;
@@ -38,6 +39,18 @@ export interface SupplierOrderWrite {
   reconciliationStatus?: string;
 }
 
+export interface SupplierOrderReconciliationView {
+  id: string;
+  lifecycleStatus: SupplierOrderLifecycle;
+  reconciliationStatus: ReconciliationStatus;
+  supplierId: string;
+  paymentLocation: 'supplier_page' | 'unknown';
+  ticketOrReservationRef?: string;
+  refundRules: string;
+  lastUpdatedAt: string;
+  requiredUserAction?: string;
+}
+
 function intentFromRow(row: BookingIntentsTable): BookingIntentRecord {
   const payload = JSON.parse(row.payload_json) as Record<string, unknown>;
   return { ...payload, id: row.id, tripId: row.trip_id, ownerId: row.owner_id, offerId: row.offer_id, offerKind: row.offer_kind, status: row.status, version: row.version, payload };
@@ -70,7 +83,58 @@ export class BookingRepository {
 
   async saveSupplierOrder(order: SupplierOrderRecord | SupplierOrderWrite, tx?: DatabaseTransaction): Promise<void> {
     const connection: any = tx ?? this.db;
-    await connection.insertInto('supplier_orders').values({ id: order.id, intent_id: order.intentId, supplier_id: order.supplierId, lifecycle_status: order.lifecycleStatus ?? order.snapshot.lifecycleStatus, reconciliation_status: order.reconciliationStatus ?? order.snapshot.reconciliationStatus, payload_json: JSON.stringify(order.snapshot), external_idempotency_key: order.externalIdempotencyKey, created_at: new Date().toISOString() }).onConflict((oc: any) => oc.column('external_idempotency_key').doNothing()).execute();
+    const now = new Date().toISOString();
+    await connection.insertInto('supplier_orders').values({ id: order.id, intent_id: order.intentId, supplier_id: order.supplierId, lifecycle_status: order.lifecycleStatus ?? order.snapshot.lifecycleStatus, reconciliation_status: order.reconciliationStatus ?? order.snapshot.reconciliationStatus, payload_json: JSON.stringify(order.snapshot), external_idempotency_key: order.externalIdempotencyKey, payment_location: order.snapshot.paymentUrl ? 'supplier_page' : 'unknown', ticket_or_reservation_ref: order.snapshot.confirmationRef ?? null, refund_rules: '', required_user_action: null, last_updated_at: now, created_at: now }).onConflict((oc: any) => oc.column('external_idempotency_key').doNothing()).execute();
+  }
+
+  async getSupplierOrderReconciliationView(id: string): Promise<SupplierOrderReconciliationView | null> {
+    const row = await this.db.selectFrom('supplier_orders').select(['id', 'supplier_id', 'lifecycle_status', 'reconciliation_status', 'payment_location', 'ticket_or_reservation_ref', 'refund_rules', 'required_user_action', 'last_updated_at']).where('id', '=', id).executeTakeFirst();
+    if (!row) return null;
+    return {
+      id: row.id,
+      supplierId: row.supplier_id,
+      lifecycleStatus: row.lifecycle_status as SupplierOrderLifecycle,
+      reconciliationStatus: row.reconciliation_status as ReconciliationStatus,
+      paymentLocation: row.payment_location === 'supplier_page' ? 'supplier_page' : 'unknown',
+      ...(row.ticket_or_reservation_ref ? { ticketOrReservationRef: row.ticket_or_reservation_ref } : {}),
+      refundRules: row.refund_rules,
+      lastUpdatedAt: new Date(row.last_updated_at).toISOString(),
+      ...(row.required_user_action ? { requiredUserAction: row.required_user_action } : {}),
+    };
+  }
+
+  async getSupplierOrderRef(id: string): Promise<SupplierOrderRef | null> {
+    const row = await this.db.selectFrom('supplier_orders').select(['supplier_id', 'payload_json']).where('id', '=', id).executeTakeFirst();
+    if (!row) return null;
+    const snapshot = JSON.parse(row.payload_json) as SupplierOrderSnapshot;
+    return snapshot.supplierOrderRef ?? null;
+  }
+
+  async saveSupplierOrderReconciliation(order: SupplierOrderReconciliationView, event: Omit<EventEnvelope, 'sequence'>): Promise<void> {
+    await this.transaction(async tx => {
+      const current = await tx.selectFrom('supplier_orders').innerJoin('booking_intents', 'booking_intents.id', 'supplier_orders.intent_id')
+        .select(['supplier_orders.payload_json as payload_json', 'booking_intents.trip_id as trip_id'])
+        .where('supplier_orders.id', '=', order.id).executeTakeFirst();
+      if (!current) throw new Error(`supplier order not found: ${order.id}`);
+      const snapshot = JSON.parse(current.payload_json) as SupplierOrderSnapshot;
+      const updatedSnapshot: SupplierOrderSnapshot = {
+        ...snapshot,
+        lifecycleStatus: order.lifecycleStatus,
+        reconciliationStatus: order.reconciliationStatus,
+        ...(order.ticketOrReservationRef ? { confirmationRef: order.ticketOrReservationRef } : {}),
+      };
+      await tx.updateTable('supplier_orders').set({
+        lifecycle_status: order.lifecycleStatus,
+        reconciliation_status: order.reconciliationStatus,
+        payload_json: JSON.stringify(updatedSnapshot),
+        payment_location: order.paymentLocation,
+        ticket_or_reservation_ref: order.ticketOrReservationRef ?? null,
+        refund_rules: order.refundRules,
+        required_user_action: order.requiredUserAction ?? null,
+        last_updated_at: order.lastUpdatedAt,
+      }).where('id', '=', order.id).executeTakeFirstOrThrow();
+      await new EventRepository(this.db).appendAndPublishable(tx, { ...event, tripId: current.trip_id });
+    });
   }
 
   async getSupplierOrder(id: string): Promise<SupplierOrderRecord | null> {
@@ -101,14 +165,19 @@ export class BookingRepository {
 
   async appendOutbox(tx: DatabaseTransaction, aggregateId: string, eventType: string, payload: Record<string, unknown>): Promise<void> {
     const aggregateType = 'BookingIntent';
-    await sql`select pg_advisory_xact_lock(hashtext(${`${aggregateType}:${aggregateId}`}))`.execute(tx);
-    const current = await tx
-      .selectFrom('outbox_events')
-      .select(sql<number>`coalesce(max(sequence), 0)`.as('max_sequence'))
-      .where('aggregate_type', '=', aggregateType)
-      .where('aggregate_id', '=', aggregateId)
-      .executeTakeFirst();
-    const sequence = Number(current?.max_sequence ?? 0) + 1;
-    await tx.insertInto('outbox_events').values({ event_id: randomUUID(), event_type: eventType, aggregate_type: aggregateType, aggregate_id: aggregateId, sequence, payload_json: JSON.stringify(payload), published_at: null, created_at: new Date().toISOString() }).execute();
+    const intent = await tx.selectFrom('booking_intents').select('trip_id').where('id', '=', aggregateId).executeTakeFirstOrThrow();
+    const occurredAt = new Date().toISOString();
+    await new EventRepository(this.db).appendAndPublishable(tx, {
+      event_id: randomUUID(),
+      event_type: eventType,
+      aggregate_type: aggregateType,
+      aggregate_id: aggregateId,
+      tripId: intent.trip_id,
+      schema_version: 1,
+      occurred_at: occurredAt,
+      request_id: `booking:${aggregateId}`,
+      correlation_id: `booking:${aggregateId}`,
+      redacted_payload: payload,
+    });
   }
 }

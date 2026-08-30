@@ -83,5 +83,24 @@ suite('PostgreSQL booking repository', () => {
     });
     const events = await db.selectFrom('outbox_events').select(['sequence', 'event_type']).where('aggregate_type', '=', 'BookingIntent').where('aggregate_id', '=', intentId).execute();
     expect(events.map(event => event.sequence).sort()).toEqual([1, 2]);
+    const history = await db.selectFrom('event_log').select(['sequence', 'event_type', 'trip_id']).where('aggregate_type', '=', 'BookingIntent').where('aggregate_id', '=', intentId).execute();
+    expect(history.map(event => event.sequence).sort()).toEqual([1, 2]);
+    expect(history.every(event => event.trip_id === tripId)).toBe(true);
+  });
+
+  it('persists reconciliation state with ordered event history and outbox atomically', async () => {
+    const suffix = Date.now().toString();
+    const tripId = `reconcile-trip-${suffix}`;
+    const intentId = `reconcile-intent-${suffix}`;
+    const orderId = `reconcile-order-${suffix}`;
+    await trips.create({ id: tripId, ownerId: 'reconcile-owner', destination: '广州', startsAt: '2026-09-01T00:00:00.000Z', endsAt: '2026-09-03T00:00:00.000Z', travelerCount: 1 });
+    await bookings.create({ id: intentId, tripId, ownerId: 'reconcile-owner', offerId: 'offer-1', offerKind: 'train', status: 'awaiting_supplier', version: 1, payload: {} });
+    await bookings.saveSupplierOrder({ id: orderId, intentId, ownerId: 'reconcile-owner', supplierId: 'mock-rail', externalIdempotencyKey: `reconcile:${suffix}`, snapshot: { lifecycleStatus: 'payment_unknown', reconciliationStatus: 'pending', supplierOrderRef: { supplierId: 'mock-rail', supplierOrderId: orderId } } });
+
+    await bookings.saveSupplierOrderReconciliation({ id: orderId, supplierId: 'mock-rail', lifecycleStatus: 'confirmed', reconciliationStatus: 'matched', paymentLocation: 'unknown', ticketOrReservationRef: 'reservation-1', refundRules: '', lastUpdatedAt: '2026-08-30T12:00:00.000Z' }, { event_id: `reconcile-event-${suffix}`, event_type: 'SupplierOrderReconciled', aggregate_type: 'SupplierOrder', aggregate_id: orderId, schema_version: 1, occurred_at: '2026-08-30T12:00:00.000Z', request_id: `reconcile:${orderId}`, correlation_id: `reconcile:${orderId}`, redacted_payload: { orderId, supplierId: 'mock-rail', lifecycleStatus: 'confirmed', reconciliationStatus: 'matched', source: 'poll' } });
+
+    await expect(bookings.getSupplierOrderReconciliationView(orderId)).resolves.toMatchObject({ lifecycleStatus: 'confirmed', reconciliationStatus: 'matched', ticketOrReservationRef: 'reservation-1' });
+    expect(await db.selectFrom('event_log').select('trip_id').where('event_id', '=', `reconcile-event-${suffix}`).executeTakeFirst()).toEqual({ trip_id: tripId });
+    expect(await db.selectFrom('outbox_events').select('event_id').where('event_id', '=', `reconcile-event-${suffix}`).executeTakeFirst()).toEqual({ event_id: `reconcile-event-${suffix}` });
   });
 });

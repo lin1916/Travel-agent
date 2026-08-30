@@ -22,4 +22,8 @@ export class InboxRepository {
       .executeTakeFirst();
     return Boolean(inserted);
   }
+
+  async release(consumerName: string, eventId: string): Promise<void> {
+    await this.db.deleteFrom('inbox_messages').where('consumer_name', '=', consumerName).where('event_id', '=', eventId).execute();
+  }
 }

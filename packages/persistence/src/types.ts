@@ -48,6 +48,7 @@ export interface OutboxEventsTable {
   event_id: string;
   aggregate_type: string;
   aggregate_id: string;
+  trip_id: Generated<string | null>;
   sequence: number;
   event_type: string;
   payload_json: string;
@@ -67,6 +68,8 @@ export interface EventLogTable {
   event_type: string;
   aggregate_type: string;
   aggregate_id: string;
+  trip_id: Generated<string | null>;
+  stream_position: Generated<number>;
   run_id: string | null;
   sequence: number;
   schema_version: number;
@@ -156,7 +159,8 @@ export interface TravelerVaultRefsTable {
 export interface MandatesTable { id: string; version: number; trip_id: string; owner_id: string; payload_json: string; policy_hash: string; actor_id: string; created_at: string; valid_until: string; revoked_at: string | null }
 export interface ActionRequestsTable { id: string; trip_id: string; owner_id: string; version: number; status: string; payload_json: string; request_hash: string; policy_snapshot_json: string | null; decision_actor_id: string | null; decision_reason: string | null; correlation_id: string; expires_at: string; consumed_at: string | null; created_at: string }
 export interface BookingIntentsTable { id: string; trip_id: string; owner_id: string; offer_id: string; offer_kind: string; status: string; version: number; payload_json: string; created_at: string; updated_at: string }
-export interface SupplierOrdersTable { id: string; intent_id: string; supplier_id: string; lifecycle_status: string; reconciliation_status: string; payload_json: string; external_idempotency_key: string; created_at: string }
+export interface SupplierOrdersTable { id: string; intent_id: string; supplier_id: string; lifecycle_status: string; reconciliation_status: string; payload_json: string; external_idempotency_key: string; payment_location: Generated<string>; ticket_or_reservation_ref: Generated<string | null>; refund_rules: Generated<string>; required_user_action: Generated<string | null>; last_updated_at: Generated<string>; created_at: string }
+export interface WebhookReceiptsTable { supplier_id: string; external_event_id: string; order_id: string; payload_hash: string; task_id: string; received_at: string }
 
 export interface Database {
   trips: TripsTable;
@@ -176,6 +180,7 @@ export interface Database {
   action_requests: ActionRequestsTable;
   booking_intents: BookingIntentsTable;
   supplier_orders: SupplierOrdersTable;
+  webhook_receipts: WebhookReceiptsTable;
 }
 
 export type TripRow = Selectable<TripsTable>;
@@ -214,7 +219,57 @@ export interface TaskCompletion {
   error?: string;
 }
 
-export type EventAppendInput = Omit<EventEnvelope, 'sequence'>;
+export type EventAppendInput = Omit<EventEnvelope, 'sequence'> & { tripId?: string };
+
+const SENSITIVE_PAYLOAD_KEYS = new Set([
+  'address',
+  'bankcard',
+  'birthdate',
+  'cardnumber',
+  'creditcard',
+  'cvv',
+  'dateofbirth',
+  'dob',
+  'email',
+  'firstname',
+  'fullname',
+  'idcard',
+  'idnumber',
+  'identitycardnumber',
+  'identitynumber',
+  'lastname',
+  'mobile',
+  'mobilephone',
+  'nationalid',
+  'passport',
+  'passportno',
+  'passportnumber',
+  'paymentcard',
+  'phonenumber',
+  'phone',
+  'rawbody',
+  'rawtravelerdata',
+  'travelername',
+  'travelerplaintext',
+]);
+
+function normalizedPayloadKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+export function assertDurablePayloadSafe(value: unknown, path = 'payload'): void {
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertDurablePayloadSafe(item, `${path}[${index}]`));
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (SENSITIVE_PAYLOAD_KEYS.has(normalizedPayloadKey(key))) {
+      throw new TypeError(`sensitive payload field is not allowed: ${path}.${key}`);
+    }
+    assertDurablePayloadSafe(item, `${path}.${key}`);
+  }
+}
 
 function canonicalizeRequest(value: unknown): string {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') {
@@ -287,7 +342,8 @@ export class DatabaseConfigurationError extends Error {
   }
 }
 
-export function eventToRow(event: EventEnvelope): EventLogTable {
+export function eventToRow(event: EventEnvelope): Insertable<EventLogTable> {
+  assertDurablePayloadSafe(event.redacted_payload, 'event.redacted_payload');
   return {
     event_id: event.event_id,
     event_type: event.event_type,

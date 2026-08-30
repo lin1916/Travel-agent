@@ -1,10 +1,11 @@
 import type { Kysely } from 'kysely';
-import { canonicalRequestJson, TaskConflictError, type Database, type EnqueueTaskInput, type LeasedTask, type TaskCompletion } from '../types.js';
+import { assertDurablePayloadSafe, canonicalRequestJson, TaskConflictError, type Database, type EnqueueTaskInput, type LeasedTask, type TaskCompletion } from '../types.js';
 
 export class TaskRepository {
   constructor(private readonly db: Kysely<Database>) {}
 
   async enqueue(input: EnqueueTaskInput): Promise<void> {
+    assertDurablePayloadSafe(input.payload, 'task.payload');
     const now = new Date().toISOString();
     const payloadJson = canonicalRequestJson(input.payload);
     await this.db
@@ -81,8 +82,33 @@ export class TaskRepository {
     });
   }
 
-  async complete(taskId: string, completion: TaskCompletion): Promise<void> {
-    await this.db
+  async heartbeat(taskId: string, workerId: string, now: Date, leaseSeconds: number): Promise<boolean> {
+    const current = now.toISOString();
+    const result = await this.db
+      .updateTable('tasks')
+      .set({ lease_until: new Date(now.getTime() + leaseSeconds * 1_000).toISOString(), updated_at: current })
+      .where('id', '=', taskId)
+      .where('status', '=', 'leased')
+      .where('lease_owner', '=', workerId)
+      .where('lease_until', '>', current)
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows ?? 0) === 1;
+  }
+
+  async retry(taskId: string, workerId: string, retryAt: Date, error: string, now = new Date()): Promise<boolean> {
+    const result = await this.db
+      .updateTable('tasks')
+      .set({ status: 'pending', available_at: retryAt.toISOString(), lease_owner: null, lease_until: null, last_error: error, updated_at: new Date().toISOString() })
+      .where('id', '=', taskId)
+      .where('status', '=', 'leased')
+      .where('lease_owner', '=', workerId)
+      .where('lease_until', '>', now.toISOString())
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows ?? 0) === 1;
+  }
+
+  async complete(taskId: string, workerId: string, completion: TaskCompletion, now = new Date()): Promise<boolean> {
+    const result = await this.db
       .updateTable('tasks')
       .set({
         status: completion.status,
@@ -92,6 +118,10 @@ export class TaskRepository {
         updated_at: new Date().toISOString(),
       })
       .where('id', '=', taskId)
-      .execute();
+      .where('status', '=', 'leased')
+      .where('lease_owner', '=', workerId)
+      .where('lease_until', '>', now.toISOString())
+      .executeTakeFirst();
+    return Number(result.numUpdatedRows ?? 0) === 1;
   }
 }

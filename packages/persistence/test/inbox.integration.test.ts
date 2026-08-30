@@ -25,4 +25,11 @@ suite('PostgreSQL inbox', () => {
     expect(await inbox.claim(consumer, 'event-1', 'external-1')).toBe(true);
     expect(await inbox.claim(consumer, 'event-2', 'external-1')).toBe(false);
   });
+
+  it('can release a failed delivery claim for retry', async () => {
+    const consumer = 'retry-consumer-' + Date.now();
+    expect(await inbox.claim(consumer, 'retry-event-1')).toBe(true);
+    await inbox.release(consumer, 'retry-event-1');
+    expect(await inbox.claim(consumer, 'retry-event-1')).toBe(true);
+  });
 });

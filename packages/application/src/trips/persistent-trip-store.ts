@@ -40,6 +40,7 @@ export class PersistentTripStore implements TripStore {
       await this.budgets.initialize(created.id, options.totalBudgetCents, {}, tx);
       await this.events.appendAndPublishable(tx, {
         event_id: randomUUID(), event_type: 'TripCreated', aggregate_type: 'Trip', aggregate_id: created.id,
+        tripId: created.id,
         schema_version: 1, occurred_at: new Date().toISOString(), request_id: options.requestId ?? options.idempotencyKey,
         correlation_id: options.idempotencyKey, redacted_payload: { ownerId: created.ownerId, destination: created.destination, totalBudgetCents: options.totalBudgetCents },
       });
@@ -58,6 +59,7 @@ export class PersistentTripStore implements TripStore {
         }, tx);
         await this.events.appendAndPublishable(tx, {
           event_id: randomUUID(), event_type: 'TripUpdated', aggregate_type: 'Trip', aggregate_id: id, schema_version: 1,
+          tripId: id,
           occurred_at: new Date().toISOString(), request_id: randomUUID(), correlation_id: id, redacted_payload: { version: updated.version },
         });
         return updated;

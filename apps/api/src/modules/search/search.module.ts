@@ -14,7 +14,10 @@ export const SEARCH_TASK_QUEUE = Symbol('SEARCH_TASK_QUEUE');
   providers: [
     {
       provide: SEARCH_TASK_QUEUE,
-      useFactory: () => process.env.DATABASE_URL ? new TaskRepository(createDatabase()) : new InMemorySearchTaskQueue(),
+      useFactory: () => {
+        if (!process.env.DATABASE_URL && process.env.NODE_ENV === 'test') return new InMemorySearchTaskQueue();
+        return new TaskRepository(createDatabase());
+      },
     },
     {
       provide: SEARCH_SERVICE,
