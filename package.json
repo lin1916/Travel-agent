@@ -10,6 +10,7 @@
     "test": "turbo run test",
     "test:integration": "turbo run test:integration",
     "test:e2e": "turbo run test:e2e",
+    "test:full-flow": "pnpm --filter @travel/testkit test -- --run full-trip",
     "db:migrate": "pnpm --filter @travel/persistence db:migrate",
     "security:scan-sensitive-output": "node packages/security/scripts/scan-sensitive-output.mjs apps packages",
     "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:integration && pnpm test:e2e && pnpm security:scan-sensitive-output"

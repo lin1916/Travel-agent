@@ -56,6 +56,9 @@ importers:
       '@travel/supplier-adapters':
         specifier: workspace:*
         version: link:../../packages/supplier-adapters
+      '@travel/testkit':
+        specifier: workspace:*
+        version: link:../../packages/testkit
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2

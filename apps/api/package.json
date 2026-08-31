@@ -22,6 +22,7 @@
     "@travel/observability": "workspace:*",
     "@travel/security": "workspace:*",
     "@travel/supplier-adapters": "workspace:*",
+    "@travel/testkit": "workspace:*",
     "@nestjs/common": "^11.0.11",
     "@nestjs/core": "^11.0.11",
     "@nestjs/platform-fastify": "^11.0.11",

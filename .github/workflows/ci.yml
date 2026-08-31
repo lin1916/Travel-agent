@@ -28,5 +28,6 @@ jobs:
       - run: pnpm db:migrate
       - run: pnpm test:integration
       - run: pnpm test:e2e
+      - run: pnpm test:full-flow
       - run: pnpm audit --audit-level=high
       - run: pnpm security:scan-sensitive-output
