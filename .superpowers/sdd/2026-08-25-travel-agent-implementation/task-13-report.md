@@ -38,3 +38,9 @@
 - `pnpm --filter @travel/observability test` — 3 passed.
 - `pnpm --filter @travel/persistence test -- --run test/audit-repository.test.ts` — audit idempotency test passed; migration/unit tests passed, PostgreSQL integration tests skipped without DB.
 - `pnpm typecheck` and package lint passed after the fix-round changes.
+
+## Fix round 2
+
+- RED: added regressions for production authorization fail-closed and request correlation/metrics; before the fix `booking-service.test.ts` and `planning-orchestrator.test.ts` each failed for the expected missing behavior.
+- GREEN: `pnpm --filter @travel/application test -- --run test/booking-service.test.ts` — 39/39 tests passed; `pnpm --filter @travel/agent-runtime test -- --run test/planning-orchestrator.test.ts` — 9/9 passed; `pnpm --filter @travel/contracts build`, `pnpm --filter @travel/agent-runtime build`, and `pnpm --filter @travel/api typecheck` passed.
+- Added production fail-closed guard for missing durable audit/transaction providers, request correlation propagation into AgentContext, and runtime metrics hooks for planning, action requests, booking audit, supplier errors, and unknown orders.

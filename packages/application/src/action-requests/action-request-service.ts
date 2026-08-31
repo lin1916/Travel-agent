@@ -16,11 +16,13 @@ export class InMemoryActionRequestStore implements ActionRequestStore {
 export interface ActionRequestDecision { approved: boolean; reason: string; expectedVersion: number }
 export interface ConsumeBinding { kind: ActionRequestInput['kind']; resourceId: string; requestHash: string }
 export interface ActionRequestCreateOptions { correlationId: string; expiresAt?: string; reasons?: PolicyReason[]; policySnapshot?: PolicySnapshot }
+export interface ActionRequestMetrics { interventions: { inc(value?: number, labels?: Record<string, string>): void } }
 
 export class ActionRequestService {
-  constructor(private readonly now: () => Date = () => new Date(), private readonly store: ActionRequestStore = new InMemoryActionRequestStore()) {}
+  constructor(private readonly now: () => Date = () => new Date(), private readonly store: ActionRequestStore = new InMemoryActionRequestStore(), private readonly metrics?: ActionRequestMetrics) {}
   async create(ownerId: string, rawInput: ActionRequestInput, options: ActionRequestCreateOptions): Promise<ActionRequestView> {
     const input = ActionRequestInputSchema.parse(rawInput);
+    if (input.risk === 'commit' || input.risk === 'redirect') this.metrics?.interventions.inc(1, { kind: input.kind });
     const request: ActionRequestRecord = { ...structuredClone(input), id: randomUUID(), status: 'pending', version: 1, reasons: structuredClone(options.reasons ?? []), expiresAt: options.expiresAt ?? new Date(this.now().getTime() + 5 * 60_000).toISOString(), ownerId, policySnapshot: options.policySnapshot ? structuredClone(options.policySnapshot) : undefined, requestHash: createHash('sha256').update(JSON.stringify(input)).digest('hex'), correlationId: options.correlationId };
     await this.store.create(request);
     return this.view(request);

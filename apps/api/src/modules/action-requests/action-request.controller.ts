@@ -14,7 +14,7 @@ export class ActionRequestController {
   async create(@Req() req: AuthenticatedRequest, @Body() body: unknown) {
     const parsed = ActionRequestInputSchema.safeParse(body);
     if (!parsed.success) throw new ApplicationError('validation_error', parsed.error.issues[0]?.message);
-    return this.service.create(req.actor?.actorId ?? '', parsed.data, { correlationId: req.headers['x-correlation-id']?.toString() ?? 'api' });
+    return this.service.create(req.actor?.actorId ?? '', parsed.data, { correlationId: req.headers['x-correlation-id']?.toString() ?? req.headers['x-request-id']?.toString() ?? 'api' });
   }
 
   @Get(':id')

@@ -5,6 +5,7 @@ export interface AgentRunSnapshot {
   runId: string;
   tripId: string;
   actorId?: string;
+  correlationId?: string;
   status: AgentRunStatus;
   userMessage: string;
   currentTripVersion: number;

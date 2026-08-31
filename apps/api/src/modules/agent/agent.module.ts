@@ -15,6 +15,7 @@ import { MANDATE_STORE } from '../mandates/mandate.tokens.js';
 import { ACTION_REQUEST_SERVICE } from '../action-requests/action-request.tokens.js';
 import { MandateModule } from '../mandates/mandate.module.js';
 import { ActionRequestModule } from '../action-requests/action-request.module.js';
+import { travelMetrics } from '@travel/observability';
 
 export interface ExecutionPolicyFacts { snapshotFor(command: ActionRequestInput): Promise<PolicySnapshot | null> }
 const approvedFields: Array<keyof ActionRequestInput> = ['tripId', 'resourceId', 'kind', 'risk', 'requestedAmount', 'supplierId', 'bookingType', 'refundable', 'offerSnapshotHash', 'requestedSensitiveFields'];
@@ -67,7 +68,7 @@ export function createExecutionPolicyEvaluator(mandates: { get(id: string, owner
         const persistence = db ? new AgentRunRepository(db) : undefined;
         const facts: ExecutionPolicyFacts = db ? createExecutionPolicyFacts(db, tripService) : { snapshotFor: async () => null };
         const executionPolicy = createExecutionPolicyEvaluator(mandateStore, actionRequests, facts);
-        return new PlanningOrchestrator(new RuleBasedProvider(), new CapabilityGateway(createPlanningTools(searchService), undefined, executionPolicy), persistence, tripService);
+        return new PlanningOrchestrator(new RuleBasedProvider(), new CapabilityGateway(createPlanningTools(searchService), undefined, executionPolicy), persistence, tripService, travelMetrics);
       },
     },
   ],

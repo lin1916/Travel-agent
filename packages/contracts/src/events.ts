@@ -14,6 +14,7 @@ export type AgentRunEventType = z.infer<typeof AgentRunEventTypeSchema>;
 
 export interface AgentContext {
   actorId?: string;
+  correlationId?: string;
   tripId: string;
   agentRunId: string;
   userMessage: string;

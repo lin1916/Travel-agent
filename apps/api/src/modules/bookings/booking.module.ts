@@ -3,6 +3,7 @@ import { ActionRequestService, BookingServiceImpl, DurableBookingAuditSink, Gove
 import { MockOrderService, RedirectTokenServiceImpl } from '@travel/supplier-adapters';
 import type { ActionRequestInput, PolicySnapshot } from '@travel/contracts';
 import { AuditRepository, createDatabase } from '@travel/persistence';
+import { travelMetrics } from '@travel/observability';
 import { BookingController } from './booking.controller.js';
 import { ACTION_REQUEST_SERVICE } from '../action-requests/action-request.tokens.js';
 import { ActionRequestModule } from '../action-requests/action-request.module.js';
@@ -58,8 +59,8 @@ class TestBookingFactsProvider {
       inject: [ACTION_REQUEST_SERVICE, MANDATE_STORE, BOOKING_GRANT_STORE, BOOKING_AUDIT_SINK],
       useFactory: (actions: ActionRequestService, mandates: { get(id: string, ownerId?: string): Promise<any> | any }, grants: InMemoryBookingGrantStore, audit: DurableBookingAuditSink | RecordingBookingAuditSink) => {
         if (process.env.NODE_ENV !== 'test') throw new Error('durable PostgreSQL booking repository and grant provider are required for booking execution');
-        const authorization = new GovernedBookingAuthorization(actions, mandates, new TestBookingFactsProvider(), grants, undefined, { audit });
-        return new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService(), undefined, authorization, new RedirectTokenServiceImpl('test-booking-key'));
+        const authorization = new GovernedBookingAuthorization(actions, mandates, new TestBookingFactsProvider(), grants, undefined, { audit, requireDurable: process.env.NODE_ENV !== 'test', transaction: async callback => callback(), metrics: travelMetrics });
+        return new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService(), undefined, authorization, new RedirectTokenServiceImpl('test-booking-key'), travelMetrics);
       },
     },
   ],

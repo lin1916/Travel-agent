@@ -22,6 +22,22 @@ const makeGateway = () => {
 };
 
 describe('PlanningOrchestrator', () => {
+  it('preserves request correlation and records workflow metrics', async () => {
+    const { gateway } = makeGateway();
+    const observed: Array<{ name: string; value?: number }> = [];
+    const metrics = {
+      toolCalls: { inc: () => observed.push({ name: 'toolCalls' }) },
+      supplierErrors: { inc: () => observed.push({ name: 'supplierErrors' }) },
+      supplierLatency: { observe: (value: number) => observed.push({ name: 'supplierLatency', value }) },
+      modelCost: { observe: (value: number) => observed.push({ name: 'modelCost', value }) },
+    };
+    const provider = { generatePlan: async (input: import('@travel/contracts').AgentContext) => ({ assistantMessage: input.correlationId ?? 'ok', missingFields: [], toolCalls: [], actionRequests: [] }) };
+    const orchestrator = new PlanningOrchestrator(provider, gateway, undefined, undefined, metrics);
+    const run = await orchestrator.start({ tripId: 'trip-1', userMessage: 'Plan Hangzhou', actorId: 'actor-1', correlationId: 'request-correlation-1' });
+    expect(run.assistantMessage).toContain('request-correlation-1');
+    expect(observed.some(item => item.name === 'modelCost')).toBe(true);
+  });
+
   it('asks one minimal question when dates are missing', async () => {
     const { gateway } = makeGateway();
     const orchestrator = new PlanningOrchestrator(new RuleBasedProvider(), gateway);

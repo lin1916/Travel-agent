@@ -80,6 +80,19 @@ async function governedAuthorization(options: { overlap?: boolean; budgetLimit?:
 }
 
 describe('booking service', () => {
+  it('fails closed for production authorization without durable audit transaction', () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const actions = new ActionRequestService();
+      const mandates = new MandateStore();
+      expect(() => new GovernedBookingAuthorization(actions, mandates, { snapshotFor: async () => null }, { findById: async () => null, consumeOnce: async () => undefined }))
+        .toThrow(/durable audit/i);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
   it('pauses a commit and requires a fresh decision after revalidation changes', async () => {
     const service = new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService({ outcome: 'pending', snapshotHash: 'offer-v2', priceCents: 1100 }), undefined, auth);
     await create(service);

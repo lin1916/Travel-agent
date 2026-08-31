@@ -9,6 +9,14 @@ export interface StartPlanningInput {
   userMessage: string;
   actorId?: string;
   requestedRisk?: RiskLevel;
+  correlationId?: string;
+}
+
+export interface PlanningMetrics {
+  toolCalls: { inc(value?: number, labels?: Record<string, string>): void };
+  supplierErrors: { inc(value?: number, labels?: Record<string, string>): void };
+  supplierLatency: { observe(value: number, labels?: Record<string, string>): void };
+  modelCost: { observe(value: number, labels?: Record<string, string>): void };
 }
 
 export interface TripVersionReader {
@@ -21,12 +29,13 @@ export class PlanningOrchestrator {
     private readonly gateway: CapabilityGateway,
     private readonly store: AgentRunPersistence = new AgentRunStore(),
     private readonly tripReader?: TripVersionReader,
+    private readonly metrics?: PlanningMetrics,
   ) {}
 
   async start(input: StartPlanningInput): Promise<AgentRunSnapshot> {
     const currentTripVersion = await this.authoritativeVersion(input.tripId, input.actorId);
     const safeMessage = redactUserMessage(input.userMessage);
-    const run = this.newRun(input.tripId, input.actorId, safeMessage, currentTripVersion);
+    const run = this.newRun(input.tripId, input.actorId, safeMessage, currentTripVersion, input.correlationId);
     await this.store.create(run);
     return this.plan(run, input.requestedRisk ?? 'read');
   }
@@ -49,10 +58,10 @@ export class PlanningOrchestrator {
     return run;
   }
 
-  private newRun(tripId: string, actorId: string | undefined, userMessage: string, currentTripVersion: number): AgentRunSnapshot {
+  private newRun(tripId: string, actorId: string | undefined, userMessage: string, currentTripVersion: number, correlationId?: string): AgentRunSnapshot {
     const now = new Date().toISOString();
     return {
-      runId: randomUUID(), tripId, actorId, status: 'running', userMessage, currentTripVersion,
+      runId: randomUUID(), tripId, actorId, correlationId, status: 'running', userMessage, currentTripVersion,
       assistantMessage: '', missingFields: [], toolCalls: [], actionRequests: [], toolCallSummaries: [], createdAt: now, updatedAt: now,
     };
   }
@@ -70,15 +79,19 @@ export class PlanningOrchestrator {
   }
 
   private async plan(run: AgentRunSnapshot, requestedRisk: RiskLevel): Promise<AgentRunSnapshot> {
+    const modelStartedAt = Date.now();
     const context: AgentContext = {
-      actorId: run.actorId, tripId: run.tripId, agentRunId: run.runId, userMessage: run.userMessage,
+      actorId: run.actorId, correlationId: run.correlationId, tripId: run.tripId, agentRunId: run.runId, userMessage: run.userMessage,
       currentTripVersion: run.currentTripVersion, redactedOffers: [], requestedRisk,
     };
     const output: StructuredAgentOutput = await this.provider.generatePlan(context);
+    this.metrics?.modelCost.observe(Date.now() - modelStartedAt, { risk: requestedRisk });
     const authoritativeTrip = this.tripReader ? await this.tripReader.getAny(run.tripId) : null;
     const summaries: ToolCallSummary[] = [];
     const results = await Promise.all(output.toolCalls.map(async call => {
-      const correlationId = randomUUID();
+      const correlationId = run.correlationId ? `${run.correlationId}:${call.toolName}` : randomUUID();
+      const startedAt = Date.now();
+      this.metrics?.toolCalls.inc(1, { tool: call.toolName });
       const baseContext: CapabilityContext = {
         actorId: run.actorId ?? 'anonymous', tripId: run.tripId, agentRunId: run.runId,
         correlationId, requestedRisk, actorAuthenticated: Boolean(run.actorId),
@@ -87,10 +100,12 @@ export class PlanningOrchestrator {
       };
       try {
         const result = await this.gateway.execute(call.toolName, baseContext, call.input);
+        this.metrics?.supplierLatency.observe(Date.now() - startedAt, { tool: call.toolName });
         const record = result as { category?: { source?: string; updatedAt?: string }; source?: string; updatedAt?: string; kind?: string };
         summaries.push({ toolName: call.toolName, risk: this.gateway.riskOf(call.toolName) ?? 'read', status: 'completed', inputSummary: this.safeInputSummary(call.input), resultSummary: { source: record.category?.source ?? record.source, updatedAt: record.category?.updatedAt ?? record.updatedAt, kind: record.kind }, correlationId });
         return record;
       } catch (error) {
+        this.metrics?.supplierErrors.inc(1, { tool: call.toolName });
         const detail = error as { code?: string };
         summaries.push({ toolName: call.toolName, risk: this.gateway.riskOf(call.toolName) ?? 'read', status: 'blocked', inputSummary: this.safeInputSummary(call.input), resultSummary: { code: detail.code ?? 'unknown' }, correlationId });
         return undefined;

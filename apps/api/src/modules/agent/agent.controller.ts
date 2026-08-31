@@ -17,14 +17,14 @@ export class AgentController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  async start(@Headers('x-actor-id') actorId: string | undefined, @Body() rawBody: unknown) {
+  async start(@Headers('x-actor-id') actorId: string | undefined, @Headers('x-correlation-id') correlationId: string | undefined, @Body() rawBody: unknown) {
     const parsed = StartSchema.safeParse(rawBody);
     if (!parsed.success) throw new ApplicationError('validation_error', parsed.error.issues[0]?.message ?? 'invalid planning request');
     if ((parsed.data.risk === 'commit' || parsed.data.risk === 'redirect') && !actorId) {
       throw new ApplicationError('policy_blocked', 'authenticated actor is required for commit capabilities');
     }
     try {
-      return await this.orchestrator.start({ tripId: parsed.data.tripId, userMessage: parsed.data.userMessage, actorId, requestedRisk: parsed.data.risk });
+      return await this.orchestrator.start({ tripId: parsed.data.tripId, userMessage: parsed.data.userMessage, actorId, requestedRisk: parsed.data.risk, correlationId });
     } catch (error) {
       if (error instanceof Error && error.message.includes('another actor')) throw new ApplicationError('forbidden', error.message);
       if (error instanceof Error && error.message === 'trip not found') throw new ApplicationError('validation_error', error.message);

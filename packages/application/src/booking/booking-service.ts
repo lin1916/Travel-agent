@@ -23,7 +23,8 @@ export interface TravelerDataGrantContext { intentId: string; intentVersion: num
 export interface TravelerDataGrantStore { findById(id: string, actorId: string): Promise<{ id: string; ownerId?: string; intentId: string; intentVersion: number; supplierLegalEntity: string; travelerIds: string[]; allowedFields: string[]; purpose: string; offerSnapshotHash: string; authorizationRef: string; expiresAt: string; usedAt?: string | null; revokedAt?: string | null } | null>; consumeOnce(actorId: string, ref: TravelerDataGrantRef, context: TravelerDataGrantContext): Promise<unknown> }
 export interface BookingAuditSink { append(entry: { actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown> }): Promise<void> }
 export interface BookingOutboxSink { append(entry: { eventId: string; aggregateId: string; eventType: string; redactedPayload: Record<string, unknown> }): Promise<void> }
-export interface BookingAuthorizationOptions { audit?: BookingAuditSink; outbox?: BookingOutboxSink; transaction?: <T>(callback: () => Promise<T>) => Promise<T> }
+export interface BookingAuthorizationOptions { audit?: BookingAuditSink; outbox?: BookingOutboxSink; transaction?: <T>(callback: () => Promise<T>) => Promise<T>; requireDurable?: boolean; metrics?: BookingMetrics }
+export interface BookingMetrics { supplierErrors: { inc(value?: number, labels?: Record<string, string>): void }; unknownOrders: { inc(value?: number, labels?: Record<string, string>): void }; auditAppends: { inc(value?: number, labels?: Record<string, string>): void } }
 
 export class RecordingBookingAuditSink implements BookingAuditSink {
   readonly entries: Array<{ actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown> }> = [];
@@ -39,6 +40,7 @@ export class GovernedBookingAuthorization implements BookingAuthorization {
   private readonly audit: BookingAuditSink;
   private readonly outbox: BookingOutboxSink;
   private readonly transaction: <T>(callback: () => Promise<T>) => Promise<T>;
+  private readonly metrics?: BookingMetrics;
   constructor(
     private readonly actions: ActionRequestService,
     private readonly mandates: { get(id: string, ownerId?: string): Promise<TravelMandate | null> | TravelMandate | null },
@@ -47,9 +49,12 @@ export class GovernedBookingAuthorization implements BookingAuthorization {
     private readonly now: () => Date = () => new Date(),
     options: BookingAuthorizationOptions = {},
   ) {
+    const requireDurable = options.requireDurable ?? process.env.NODE_ENV === 'production';
+    if (requireDurable && (!options.audit || !options.transaction)) throw new Error('durable audit and transaction providers are required');
     this.audit = options.audit ?? new RecordingBookingAuditSink();
     this.outbox = options.outbox ?? new RecordingBookingOutboxSink();
     this.transaction = options.transaction ?? (async callback => callback());
+    this.metrics = options.metrics;
   }
 
   async authorize(actorId: string, intent: BookingIntentAggregate, input: CommitBookingIntent, offer: AuthorizedBookingOffer): Promise<{ consume(): Promise<void> }> {
@@ -83,6 +88,7 @@ export class GovernedBookingAuthorization implements BookingAuthorization {
         await this.actions.consume(action.id, actorId, action.version, { kind: 'booking', resourceId: intent.offerId, requestHash: action.requestHash });
         await this.grants.consumeOnce(actorId, { id: grant.id, intentId: grant.intentId, expiresAt: grant.expiresAt }, { intentId: intent.id, intentVersion: intent.version, supplierLegalEntity: grant.supplierLegalEntity, travelerIds: grant.travelerIds, allowedFields: grant.allowedFields, purpose: grant.purpose, offerSnapshotHash: intent.selectedOfferSnapshotHash ?? '', authorizationRef: action.id });
         await this.audit.append({ actorId, tripId: intent.tripId, intentId: intent.id, actionRequestId: action.id, mandateId: mandate.id, event: 'BookingAuthorizationConsumed', redactedPayload: { intentVersion: intent.version, supplierId: intent.supplierId, offerId: intent.offerId } });
+        this.metrics?.auditAppends.inc(1, { event: 'BookingAuthorizationConsumed' });
         await this.outbox.append({ eventId: randomUUID(), aggregateId: intent.id, eventType: 'BookingAuthorizationConsumed', redactedPayload: { actorId, actionRequestId: action.id, mandateId: mandate.id } });
       });
     } };
@@ -108,7 +114,7 @@ export class BookingServiceImpl {
   private readonly consumedActions = new Set<string>();
   private readonly idempotency = new Map<string, CommitBookingResult>();
   private readonly supplierOrders = new Map<string, { ownerId: string; intentId: string; supplierId: string; snapshot: SupplierOrderSnapshot }>();
-  constructor(private readonly store: BookingIntentStore, private readonly orders: MockOrderService, private readonly now: () => Date = () => new Date(), private readonly authorization?: BookingAuthorization, private readonly redirects?: RedirectTokenService) {}
+  constructor(private readonly store: BookingIntentStore, private readonly orders: MockOrderService, private readonly now: () => Date = () => new Date(), private readonly authorization?: BookingAuthorization, private readonly redirects?: RedirectTokenService, private readonly metrics?: BookingMetrics) {}
 
   async create(actorId: string, input: CreateBookingIntentInput): Promise<BookingIntentView> {
     if (!actorId || !input.tripId || !input.travelerDataGrantId) throw new ApplicationError('validation_error', 'actor, trip, and traveler data grant are required');
@@ -182,6 +188,8 @@ export class BookingServiceImpl {
     if (this.store.persistCommit) await this.store.save(next as BookingIntentAggregate & { [key: string]: unknown });
     const response = await this.orders.createOrder({ intentId: intent.id, offerSnapshotHash: String(intent.selectedOfferSnapshotHash), amount: structuredClone(offer.price), travelerDataGrantId: String(intent.travelerDataGrantId), executionAuthorizationRef: input.actionRequestId ?? input.mandateId as string, externalIdempotencyKey: `booking:${intent.id}:${input.idempotencyKey}` });
     const supplierOrder = this.orders.toSnapshot(response);
+    if (response.outcome === 'indeterminate') this.metrics?.unknownOrders.inc(1, { supplier: String(intent.supplierId) });
+    if (response.outcome === 'rejected') this.metrics?.supplierErrors.inc(1, { supplier: String(intent.supplierId) });
     const orderId = supplierOrder.supplierOrderRef?.supplierOrderId ?? `unknown-${intent.id}`;
     const persistedOrder = { id: orderId, ownerId: actorId, intentId: intent.id, supplierId: String(intent.supplierId), externalIdempotencyKey: `booking:${intent.id}:${input.idempotencyKey}`, snapshot: structuredClone(supplierOrder) };
     if (!this.store.persistCommit && this.store.saveSupplierOrder) await this.store.saveSupplierOrder(persistedOrder);
