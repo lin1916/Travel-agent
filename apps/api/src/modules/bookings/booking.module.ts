@@ -1,7 +1,8 @@
 import { Module } from '@nestjs/common';
-import { ActionRequestService, BookingServiceImpl, GovernedBookingAuthorization, InMemoryBookingStore, type BookingPolicyFacts, type TravelerDataGrantContext, type TravelerDataGrantRef, type TravelerDataGrantStore } from '@travel/application';
+import { ActionRequestService, BookingServiceImpl, DurableBookingAuditSink, GovernedBookingAuthorization, InMemoryBookingStore, RecordingBookingAuditSink, type BookingPolicyFacts, type TravelerDataGrantContext, type TravelerDataGrantRef, type TravelerDataGrantStore } from '@travel/application';
 import { MockOrderService, RedirectTokenServiceImpl } from '@travel/supplier-adapters';
 import type { ActionRequestInput, PolicySnapshot } from '@travel/contracts';
+import { AuditRepository, createDatabase } from '@travel/persistence';
 import { BookingController } from './booking.controller.js';
 import { ACTION_REQUEST_SERVICE } from '../action-requests/action-request.tokens.js';
 import { ActionRequestModule } from '../action-requests/action-request.module.js';
@@ -9,6 +10,7 @@ import { MANDATE_STORE } from '../mandates/mandate.tokens.js';
 import { MandateModule } from '../mandates/mandate.module.js';
 
 export const BOOKING_GRANT_STORE = Symbol('BOOKING_GRANT_STORE');
+export const BOOKING_AUDIT_SINK = Symbol('BOOKING_AUDIT_SINK');
 
 /** Test-only grant boundary; production booking remains explicitly unavailable until a durable provider is configured. */
 export class InMemoryBookingGrantStore implements TravelerDataGrantStore {
@@ -44,12 +46,19 @@ class TestBookingFactsProvider {
   controllers: [BookingController],
   providers: [
     { provide: BOOKING_GRANT_STORE, useFactory: () => new InMemoryBookingGrantStore() },
+    { provide: BOOKING_AUDIT_SINK, useFactory: () => {
+      if (!process.env.DATABASE_URL) {
+        if (process.env.NODE_ENV === 'test') return new RecordingBookingAuditSink();
+        throw new Error('durable audit storage is required for booking authorization');
+      }
+      return new DurableBookingAuditSink(new AuditRepository(createDatabase()));
+    } },
     {
       provide: BookingServiceImpl,
-      inject: [ACTION_REQUEST_SERVICE, MANDATE_STORE, BOOKING_GRANT_STORE],
-      useFactory: (actions: ActionRequestService, mandates: { get(id: string, ownerId?: string): Promise<any> | any }, grants: InMemoryBookingGrantStore) => {
+      inject: [ACTION_REQUEST_SERVICE, MANDATE_STORE, BOOKING_GRANT_STORE, BOOKING_AUDIT_SINK],
+      useFactory: (actions: ActionRequestService, mandates: { get(id: string, ownerId?: string): Promise<any> | any }, grants: InMemoryBookingGrantStore, audit: DurableBookingAuditSink | RecordingBookingAuditSink) => {
         if (process.env.NODE_ENV !== 'test') throw new Error('durable PostgreSQL booking repository and grant provider are required for booking execution');
-        const authorization = new GovernedBookingAuthorization(actions, mandates, new TestBookingFactsProvider(), grants);
+        const authorization = new GovernedBookingAuthorization(actions, mandates, new TestBookingFactsProvider(), grants, undefined, { audit });
         return new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService(), undefined, authorization, new RedirectTokenServiceImpl('test-booking-key'));
       },
     },

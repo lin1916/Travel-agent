@@ -3,6 +3,11 @@ import { PersistentReconciliationOrderStore, ReconciliationServiceImpl, SearchSe
 import { MockAttractionAdapter, MockDiningAdapter, MockStayAdapter, MockTransportAdapter } from '@travel/supplier-adapters';
 import { TaskRunner } from './task-runner.js';
 import { createWorkerHandlers } from './worker-composition.js';
+import { createCorrelationContext, travelMetrics, createRedactedLogger } from '@travel/observability';
+
+const logger = createRedactedLogger();
+const workerCorrelation = createCorrelationContext({ requestId: `worker-${process.pid}` });
+logger.info({ name: 'worker.started', requestId: workerCorrelation.requestId, correlationId: workerCorrelation.correlationId });
 
 const db = createDatabase();
 await migrateToLatest(db);
@@ -29,6 +34,8 @@ const runner = new TaskRunner(new TaskRepository(db), createWorkerHandlers({
 );
 
 while (true) {
+  const startedAt = Date.now();
   const task = await runner.runOnce();
+  if (task) travelMetrics.queueAge.observe(Math.max(0, Date.now() - startedAt), { kind: task.kind });
   if (!task) await new Promise(resolve => setTimeout(resolve, 250));
 }

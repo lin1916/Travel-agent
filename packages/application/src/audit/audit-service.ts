@@ -2,6 +2,39 @@ import type { AuditEntry, AuditView } from '@travel/contracts';
 export type { AuditEntry, AuditView } from '@travel/contracts';
 export interface AuditStore { append(entry: AuditEntry & { tripId?: string; supplierId?: string; allowedFields?: string[] }): Promise<void>; listForTrip(tripId: string, actorId: string): Promise<AuditView[]>; }
 export interface AuditService { append(entry: AuditEntry & { tripId?: string; supplierId?: string; allowedFields?: string[] }): Promise<void>; listForTrip(tripId: string, actorId: string): Promise<AuditView[]>; }
+export interface BookingAuthorizationAuditEvent {
+  actorId: string;
+  tripId: string;
+  intentId: string;
+  actionRequestId: string;
+  mandateId: string;
+  event: string;
+  redactedPayload: Record<string, unknown>;
+}
+
+export class DurableBookingAuditSink {
+  constructor(
+    private readonly writer: Pick<AuditStore, 'append'>,
+    private readonly now: () => string = () => new Date().toISOString(),
+  ) {}
+
+  async append(event: BookingAuthorizationAuditEvent): Promise<void> {
+    await this.writer.append({
+      tripId: event.tripId,
+      actorId: event.actorId,
+      action: event.event,
+      resource: event.intentId,
+      policyResult: 'allow',
+      reason: 'governed booking authorization consumed',
+      mandateVersion: undefined,
+      grantRef: event.actionRequestId,
+      requestId: event.actionRequestId,
+      correlationId: event.actionRequestId,
+      occurredAt: this.now(),
+    });
+  }
+}
+
 const ID = /^[A-Za-z0-9._:-]{1,256}$/;
 export class AuditServiceImpl implements AuditService {
   constructor(private readonly store: AuditStore) {}

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { BadRequestException, Body, ConflictException, Controller, Headers, HttpCode, Inject, Param, Post, Req, ServiceUnavailableException } from '@nestjs/common';
 import { SupplierOrderUpdateSchema, type SupplierOrderRef } from '@travel/contracts';
 import type { SupplierAdapter } from '@travel/supplier-adapters';
+import { travelMetrics } from '@travel/observability';
 import { WEBHOOK_VERIFIER, type WebhookVerifier } from './webhook-verifier.js';
 
 export const WEBHOOK_INTAKE = Symbol('WEBHOOK_INTAKE');
@@ -45,6 +46,7 @@ export class WebhookController {
     @Req() request: RawWebhookRequest,
     @Body() _body: unknown,
   ): Promise<{ accepted: true }> {
+    travelMetrics.webhookEvents.inc(1, { supplier: supplierId });
     const rawBody = request.rawBody;
     if (!rawBody) throw new BadRequestException('raw webhook body is required');
     const headers = Object.fromEntries(Object.entries(inputHeaders).flatMap(([key, value]) => typeof value === 'string' ? [[key.toLowerCase(), value]] : []));

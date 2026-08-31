@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createRedactedLogger, serializeLogEvent } from '../src/logger.js';
+import { MetricsRegistry, createTravelMetrics } from '../src/metrics.js';
 
 describe('redacted observability', () => {
   it('never emits traveler, authorization, or encrypted values', () => {
@@ -10,13 +11,15 @@ describe('redacted observability', () => {
     const phone = '13800138000';
     const payment = '4111111111111111';
     const encrypted = 'eyJjaXBoZXJ0ZXh0IjoiU0VOU0lUSVZFIn0=';
-    logger.info({ name: 'booking', requestId: 'req-1', correlationId: 'corr-1', fields: { secret, idNumber, phone, payment, authorization: 'Bearer top-secret', encrypted } });
+    const paymentReference = 'pay-ref-secret';
+    logger.info({ name: 'booking', requestId: 'req-1', correlationId: 'corr-1', fields: { secret, idNumber, phone, payment, paymentReference, authorization: 'Bearer top-secret', encrypted } });
     expect(output.join('')).not.toContain(secret);
     expect(output.join('')).not.toContain(idNumber);
     expect(output.join('')).not.toContain(phone);
     expect(output.join('')).not.toContain(payment);
     expect(output.join('')).not.toContain('top-secret');
     expect(output.join('')).not.toContain(encrypted);
+    expect(output.join('')).not.toContain(paymentReference);
   });
 
   it('serializes only stable correlation identifiers and safe fields', () => {
@@ -24,5 +27,13 @@ describe('redacted observability', () => {
     expect(serialized).toContain('req');
     expect(serialized).toContain('corr');
     expect(serialized).toContain('order-1');
+  });
+
+  it('exposes named travel workflow metrics instead of an unlabelled empty registry', () => {
+    const travel = createTravelMetrics(new MetricsRegistry());
+    travel.unknownOrders.inc();
+    expect(travel.unknownOrders.value()).toBe(1);
+    expect(travel.supplierErrors).toBeDefined();
+    expect(travel.modelCost).toBeDefined();
   });
 });

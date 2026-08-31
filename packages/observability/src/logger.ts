@@ -1,8 +1,9 @@
 export interface LogEvent { name: string; requestId: string; correlationId: string; fields?: Record<string, unknown> }
 export interface RedactedLogger { info(event: LogEvent, fields?: Record<string, unknown>): void; warn(event: LogEvent, fields?: Record<string, unknown>): void; error(event: LogEvent, fields?: Record<string, unknown>): void }
-const SENSITIVE = /(^|_|-)(name|fullname|firstname|lastname|id(number|card)?|passport(number)?|phone(number)?|mobile|email|authorization|cookie|password|secret|token|payment|card(number)?|cvv|encrypted|ciphertext|plaintext|rawbody|traveler)(_|-|$)/i;
+const SENSITIVE = /(name|fullname|firstname|lastname|idnumber|idcard|passport|phonenumber|mobile|email|authorization|cookie|password|secret|token|payment|card|cvv|encrypted|ciphertext|plaintext|rawbody|traveler)/i;
+function sensitiveKey(key: string): boolean { return SENSITIVE.test(key.replace(/([a-z])([A-Z])/g, '$1$2').toLowerCase().replace(/[^a-z]/g, '')); }
 function redact(value: unknown, key = ''): unknown {
-  if (SENSITIVE.test(key)) return '[REDACTED]';
+  if (sensitiveKey(key)) return '[REDACTED]';
   if (typeof value === 'string') {
     return value.replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[REDACTED_EMAIL]').replace(/\b\d{17}[\dXx]\b/g, '[REDACTED_ID]').replace(/\b1[3-9]\d{9}\b/g, '[REDACTED_PHONE]').replace(/\b\d{12,19}\b/g, '[REDACTED_PAYMENT]');
   }
