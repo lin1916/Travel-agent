@@ -2,6 +2,7 @@ export interface Counter { inc(value?: number, labels?: Record<string,string>): 
 export interface Histogram { observe(value: number, labels?: Record<string,string>): void; values(labels?: Record<string,string>): number[] }
 export interface TravelMetrics {
   httpRequests: Counter;
+  toolCalls: Counter;
   supplierErrors: Counter;
   unknownOrders: Counter;
   interventions: Counter;
@@ -17,6 +18,7 @@ export const metrics = new MetricsRegistry();
 export function createTravelMetrics(registry: MetricsRegistry = metrics): TravelMetrics {
   return {
     httpRequests: registry.counter('http_requests_total'),
+    toolCalls: registry.counter('tool_calls_total'),
     supplierErrors: registry.counter('supplier_errors_total'),
     unknownOrders: registry.counter('unknown_orders_total'),
     interventions: registry.counter('interventions_total'),
