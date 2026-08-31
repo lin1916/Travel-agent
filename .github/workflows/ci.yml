@@ -29,5 +29,7 @@ jobs:
       - run: pnpm test:integration
       - run: pnpm test:e2e
       - run: pnpm test:full-flow
+      - run: pnpm --filter @travel/api exec vitest run test/full-trip-flow.e2e-spec.ts
+      - run: pnpm --filter @travel/web test:e2e -- full-trip-flow.spec.ts
       - run: pnpm audit --audit-level=high
       - run: pnpm security:scan-sensitive-output

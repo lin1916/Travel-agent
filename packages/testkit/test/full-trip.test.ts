@@ -5,6 +5,7 @@ describe('full mock travel workflow', () => {
   it('completes the deterministic four-category trip workflow', () => {
     const result = runFullTripScenario();
     expect(result.trip).toMatchObject({ id: 'trip-demo-001', destination: '杭州', travelerCount: 2 });
+    expect(result.workflow).toEqual(expect.arrayContaining(['anonymous_trip_created', 'login_required', 'grant_issued', 'mandate_bounded', 'unknown_order_reconciled', 'views_exposed']));
     expect(result.search).toMatchObject({ status: 'completed', categories: ['train', 'stay', 'attraction', 'dining'] });
     expect(result.travelers).toHaveLength(2);
     expect(result.grant.allowedFields).toEqual(['fullName']);
@@ -15,6 +16,7 @@ describe('full mock travel workflow', () => {
     expect(result.budget.paid).toEqual({ amountCents: 3000, currency: 'CNY' });
     expect(result.unknownOrder.reconciliationStatus).toBe('pending');
     expect(result.leakScan.matches).toEqual([]);
+    expect(result.leakScan.payloadsChecked).toBeGreaterThanOrEqual(3);
     expect(result.browserRefreshRecovered).toBe(true);
     expect(result.workerRestartRecovered).toBe(true);
   });
@@ -33,5 +35,7 @@ describe('full mock travel workflow', () => {
     expect(runFullTripScenario({ fault: 'out_of_order_webhook' }).callbacks.outOfOrderBuffered).toBe(1);
     expect(runFullTripScenario({ fault: 'mandate_revoked' }).mandate.revoked).toBe(true);
     expect(runFullTripScenario({ fault: 'partial_success' }).redirectOrder.status).toBe('pending');
+    expect(runFullTripScenario({ fault: 'price_changed' }).search.selectedOfferIds).toEqual([]);
+    expect(runFullTripScenario({ fault: 'vault_kms_outage' }).apiOrder.status).toBe('failed');
   });
 });
