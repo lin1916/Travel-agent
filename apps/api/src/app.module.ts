@@ -11,10 +11,11 @@ import { MandateModule } from './modules/mandates/mandate.module.js';
 import { ActionRequestModule } from './modules/action-requests/action-request.module.js';
 import { BookingModule } from './modules/bookings/booking.module.js';
 import { EventModule } from './modules/events/event.module.js';
+import { OrderModule } from './modules/orders/order.module.js';
 import { WebhookModule } from './modules/webhooks/webhook.module.js';
 
 @Module({
-  imports: [TripModule, ItineraryModule, BudgetModule, SearchModule, AgentModule, AuthModule, TravelerModule, MandateModule, ActionRequestModule, BookingModule, WebhookModule, EventModule],
+  imports: [TripModule, ItineraryModule, BudgetModule, SearchModule, AgentModule, AuthModule, TravelerModule, MandateModule, ActionRequestModule, BookingModule, WebhookModule, EventModule, OrderModule],
   controllers: [HealthController],
 })
 export class AppModule {}

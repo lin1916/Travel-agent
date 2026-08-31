@@ -1,0 +1,1 @@
+export function AfterSalesAction({ kind, disabled = false, onClick }: { kind: 'cancel' | 'refund'; disabled?: boolean; onClick?: () => void }) { return <button type="button" disabled={disabled} onClick={onClick}>{kind === 'cancel' ? '申请取消' : '申请退款'}</button>; }

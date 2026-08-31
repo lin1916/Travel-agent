@@ -12,3 +12,7 @@ export { evaluateExecutionPolicy } from '@travel/domain';
 export * from './booking/booking-service.js';
 export * from './booking/revalidation-service.js';
 export * from './reconciliation/reconciliation-service.js';
+export { OrderQueryService } from './orders/order-query-service.js';
+export type { OrderProjection, OrderQueryStore } from './orders/order-query-service.js';
+export * from './orders/cancellation-service.js';
+export * from './orders/refund-service.js';
