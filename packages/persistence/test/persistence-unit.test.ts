@@ -50,8 +50,36 @@ describe('persistence boundary helpers', () => {
     expect(() => assertDurablePayloadSafe({ traveler: { purpose: 'Alice Lovelace' } })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: 'private name' } })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', purpose: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
-    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'], purpose: 'ticketing' })).not.toThrow();
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', grantId: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', authorizationRef: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', travelerIds: ['Alice Lovelace'] })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', travelerCount: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({
+      travelerVaultRef: 'vault-ref-1', grantId: 'grant-1', authorizationRef: 'decision-1',
+      travelerIds: ['traveler-1'], travelerCount: 1, allowedFields: ['fullName'], purpose: 'ticketing',
+    })).not.toThrow();
     expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'] } })).not.toThrow();
+  });
+
+  it('rejects human-readable nested traveler references and malformed traveler ID arrays', () => {
+    expect(() => assertDurablePayloadSafe({
+      traveler: { travelerRef: 'vault-ref-Alice-Lovelace' },
+    })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({
+      traveler: { travelerRef: 'vault-ref-1', travelerIds: ['traveler-Jane-Doe'] },
+    })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-Alice-Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerIds: ['traveler-Jane-Doe'] })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerIds: ['traveler-Jane-1'] })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({
+      traveler: { travelerRef: 'vault-ref-1', travelerIds: 'traveler-1' },
+    })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({
+      traveler: { travelerRef: 'vault-ref-1', travelerIds: Array.from({ length: 17 }, (_, index) => `traveler-${index + 1}`) },
+    })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({
+      traveler: { travelerRef: 'vault-ref-1', travelerIds: ['traveler-1'], travelerCount: 1, allowedFields: ['fullName'], purpose: 'ticketing' },
+    })).not.toThrow();
   });
 
   it('reclaims the raced row identity after an external-event insert conflict', async () => {

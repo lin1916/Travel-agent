@@ -126,21 +126,41 @@ RED/GREEN evidence:
 
 PostgreSQL integration behavior remains runtime-unverified because `DATABASE_URL` is not set.
 
-## Fix Round 3
+## Fix Round 3 value-schema follow-up
 
 Closed the remaining durable traveler-payload gap with strict value validation:
 
 - Traveler references must be UUIDs or bounded opaque identifiers with approved reference prefixes; human-readable names are rejected.
 - Traveler-bound envelopes permit only `travelerRef`/`travelerVaultRef`, bounded `travelerIds`, the vault-defined `allowedFields`, and approved purpose values (`ticketing`, `booking`, `reservation`, `supplier_fulfillment`, `traveler_verification`).
-- Plaintext disguised as `purpose`, `travelerVaultRef`, or other metadata is rejected, while existing top-level redacted references and nested reference envelopes remain valid.
+- Plaintext disguised as `purpose`, `travelerVaultRef`, `grantId`, `authorizationRef`, `travelerIds`, or `travelerCount` is rejected. Valid opaque grant/authorization refs, bounded traveler IDs/count, top-level redacted references, and nested reference envelopes remain accepted.
 
 RED/GREEN evidence:
 
-- RED: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — the new regression failed because plaintext purpose/reference values were accepted.
+- RED: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — the new regressions failed because plaintext purpose/reference values and safe-looking grant/authorization/traveler metadata values were accepted.
 - GREEN: same command — 10 tests passed.
 - GREEN: `pnpm --filter @travel/persistence test` — 14 passed, 18 skipped because `DATABASE_URL` is unset.
 - GREEN: `pnpm --filter @travel/worker test` — 10 passed.
 - GREEN: `pnpm --filter @travel/api exec vitest run test/webhook.e2e-spec.ts test/sse-replay.e2e-spec.ts --reporter=dot` — 6 passed.
+- GREEN: `pnpm typecheck` — 13 successful tasks.
+- GREEN: `pnpm lint` — 13 successful tasks.
+
+PostgreSQL integration behavior remains runtime-unverified because `DATABASE_URL` is not set.
+
+## Fix Round 4
+
+Closed the remaining durable payload privacy blocker with an explicit opaque-reference shape and nested traveler ID validation:
+
+- Opaque traveler references are UUIDs or bounded (1–128 chars) approved-prefix identifiers made of lowercase technical labels ending in a numeric token; human-readable values such as `vault-ref-Alice-Lovelace` and `traveler-Jane-Doe` are rejected.
+- Nested traveler reference envelopes now reject non-array, empty/overlong, and non-opaque `travelerIds` values while preserving valid redacted references, field metadata, purpose, and traveler counts.
+
+RED/GREEN evidence:
+
+- RED: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — 1 regression failed (10 passed) because nested human-readable traveler references were accepted.
+- GREEN: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — 11 tests passed.
+- GREEN: `pnpm --filter @travel/persistence test` — 15 passed, 18 skipped because `DATABASE_URL` is unset.
+- GREEN: `pnpm --filter @travel/worker test` — 10 passed.
+- GREEN: `pnpm --filter @travel/api exec vitest run test/webhook.e2e-spec.ts test/sse-replay.e2e-spec.ts --reporter=dot` — 6 passed.
+- GREEN: `pnpm --filter @travel/application exec vitest run test/reconciliation-service.test.ts --reporter=dot` — 3 passed.
 - GREEN: `pnpm typecheck` — 13 successful tasks.
 - GREEN: `pnpm lint` — 13 successful tasks.
 
