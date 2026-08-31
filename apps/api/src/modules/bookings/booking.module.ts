@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { ActionRequestService, BookingServiceImpl, DurableBookingAuditSink, GovernedBookingAuthorization, InMemoryBookingStore, RecordingBookingAuditSink, type BookingPolicyFacts, type TravelerDataGrantContext, type TravelerDataGrantRef, type TravelerDataGrantStore } from '@travel/application';
 import { MockOrderService, RedirectTokenServiceImpl } from '@travel/supplier-adapters';
 import type { ActionRequestInput, PolicySnapshot } from '@travel/contracts';
-import { AuditRepository, createDatabase } from '@travel/persistence';
+import { AuditRepository, BookingRepository, createDatabase } from '@travel/persistence';
 import { travelMetrics } from '@travel/observability';
 import { BookingController } from './booking.controller.js';
 import { ACTION_REQUEST_SERVICE } from '../action-requests/action-request.tokens.js';
@@ -27,6 +27,10 @@ export class InMemoryBookingGrantStore implements TravelerDataGrantStore {
     record.usedAt = new Date().toISOString();
   }
 }
+class UnavailableDurableGrantStore implements TravelerDataGrantStore {
+  async findById(): Promise<null> { return null; }
+  async consumeOnce(): Promise<never> { throw new Error('durable traveler grant provider is unavailable'); }
+}
 
 class TestBookingFactsProvider {
   async snapshotFor(command: ActionRequestInput): Promise<BookingPolicyFacts | null> {
@@ -46,7 +50,7 @@ class TestBookingFactsProvider {
   imports: [ActionRequestModule, MandateModule],
   controllers: [BookingController],
   providers: [
-    { provide: BOOKING_GRANT_STORE, useFactory: () => new InMemoryBookingGrantStore() },
+    { provide: BOOKING_GRANT_STORE, useFactory: () => process.env.DATABASE_URL ? new UnavailableDurableGrantStore() : new InMemoryBookingGrantStore() },
     { provide: BOOKING_AUDIT_SINK, useFactory: () => {
       if (!process.env.DATABASE_URL) {
         if (process.env.NODE_ENV === 'test') return new RecordingBookingAuditSink();
@@ -57,10 +61,12 @@ class TestBookingFactsProvider {
     {
       provide: BookingServiceImpl,
       inject: [ACTION_REQUEST_SERVICE, MANDATE_STORE, BOOKING_GRANT_STORE, BOOKING_AUDIT_SINK],
-      useFactory: (actions: ActionRequestService, mandates: { get(id: string, ownerId?: string): Promise<any> | any }, grants: InMemoryBookingGrantStore, audit: DurableBookingAuditSink | RecordingBookingAuditSink) => {
-        if (process.env.NODE_ENV !== 'test') throw new Error('durable PostgreSQL booking repository and grant provider are required for booking execution');
-        const authorization = new GovernedBookingAuthorization(actions, mandates, new TestBookingFactsProvider(), grants, undefined, { audit, requireDurable: process.env.NODE_ENV !== 'test', transaction: async callback => callback(), metrics: travelMetrics });
-        return new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService(), undefined, authorization, new RedirectTokenServiceImpl('test-booking-key'), travelMetrics);
+      useFactory: (actions: ActionRequestService, mandates: { get(id: string, ownerId?: string): Promise<any> | any }, grants: TravelerDataGrantStore, audit: DurableBookingAuditSink | RecordingBookingAuditSink) => {
+        if (process.env.NODE_ENV !== 'test' && !process.env.DATABASE_URL) throw new Error('durable PostgreSQL booking repository and grant provider are required for booking execution');
+        const store = process.env.DATABASE_URL ? new BookingRepository(createDatabase()) : new InMemoryBookingStore();
+        const transaction = store instanceof BookingRepository ? <T>(callback: () => Promise<T>) => store.transaction(async () => callback()) : async <T>(callback: () => Promise<T>) => callback();
+        const authorization = new GovernedBookingAuthorization(actions, mandates, new TestBookingFactsProvider(), grants, undefined, { audit, requireDurable: process.env.NODE_ENV !== 'test', transaction, metrics: travelMetrics });
+        return new BookingServiceImpl(store as any, new MockOrderService(), undefined, authorization, new RedirectTokenServiceImpl(process.env.REDIRECT_TOKEN_KEY ?? 'test-booking-key'), travelMetrics);
       },
     },
   ],

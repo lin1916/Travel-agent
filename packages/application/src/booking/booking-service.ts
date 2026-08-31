@@ -6,7 +6,7 @@ import type { RedirectTokenService } from '@travel/contracts';
 import { ApplicationError } from '../errors.js';
 import { ActionRequestService } from '../action-requests/action-request-service.js';
 
-export interface CommitBookingIntent { intentId: string; expectedVersion: number; actionRequestId?: string; mandateId?: string; idempotencyKey: string; selectedOfferSnapshotHash: string }
+export interface CommitBookingIntent { intentId: string; expectedVersion: number; actionRequestId?: string; mandateId?: string; idempotencyKey: string; selectedOfferSnapshotHash: string; requestId?: string; correlationId?: string }
 export interface BookingIntentView { id: string; version: number; status: BookingIntentStatus; revalidation?: RevalidationResult }
 export interface CommitBookingResult { intent: BookingIntentView; supplierOrder?: SupplierOrderSnapshot; redirectUrl?: string; requiresAction?: ActionRequestView }
 export interface CreateBookingIntentInput { id: string; tripId: string; offerId: string; offerKind: any; supplierId: string; selectedOfferSnapshotHash: string; originalPriceCents: number; refundRulesHash: string; travelerDataGrantId: string; travelerDataGrantExpiresAt?: string; travelerIds?: string[]; requestedSensitiveFields?: string[]; travelerDataPurpose?: string; supplierLegalEntity?: string; refundable?: boolean; startsAt?: string; endsAt?: string }
@@ -21,14 +21,14 @@ export interface BookingPolicyFactsProvider { snapshotFor(command: ActionRequest
 export interface TravelerDataGrantRef { id: string; intentId: string; expiresAt: string }
 export interface TravelerDataGrantContext { intentId: string; intentVersion: number; supplierLegalEntity: string; travelerIds: string[]; allowedFields: string[]; purpose: string; offerSnapshotHash: string; authorizationRef: string }
 export interface TravelerDataGrantStore { findById(id: string, actorId: string): Promise<{ id: string; ownerId?: string; intentId: string; intentVersion: number; supplierLegalEntity: string; travelerIds: string[]; allowedFields: string[]; purpose: string; offerSnapshotHash: string; authorizationRef: string; expiresAt: string; usedAt?: string | null; revokedAt?: string | null } | null>; consumeOnce(actorId: string, ref: TravelerDataGrantRef, context: TravelerDataGrantContext): Promise<unknown> }
-export interface BookingAuditSink { append(entry: { actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown> }): Promise<void> }
+export interface BookingAuditSink { append(entry: { actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown>; requestId?: string; correlationId?: string }): Promise<void> }
 export interface BookingOutboxSink { append(entry: { eventId: string; aggregateId: string; eventType: string; redactedPayload: Record<string, unknown> }): Promise<void> }
 export interface BookingAuthorizationOptions { audit?: BookingAuditSink; outbox?: BookingOutboxSink; transaction?: <T>(callback: () => Promise<T>) => Promise<T>; requireDurable?: boolean; metrics?: BookingMetrics }
 export interface BookingMetrics { supplierErrors: { inc(value?: number, labels?: Record<string, string>): void }; unknownOrders: { inc(value?: number, labels?: Record<string, string>): void }; auditAppends: { inc(value?: number, labels?: Record<string, string>): void } }
 
 export class RecordingBookingAuditSink implements BookingAuditSink {
-  readonly entries: Array<{ actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown> }> = [];
-  async append(entry: { actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown> }): Promise<void> { this.entries.push(structuredClone(entry)); }
+  readonly entries: Array<{ actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown>; requestId?: string; correlationId?: string }> = [];
+  async append(entry: { actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown>; requestId?: string; correlationId?: string }): Promise<void> { this.entries.push(structuredClone(entry)); }
 }
 export class RecordingBookingOutboxSink implements BookingOutboxSink {
   readonly entries: Array<{ eventId: string; aggregateId: string; eventType: string; redactedPayload: Record<string, unknown> }> = [];
@@ -87,7 +87,7 @@ export class GovernedBookingAuthorization implements BookingAuthorization {
       await this.transaction(async () => {
         await this.actions.consume(action.id, actorId, action.version, { kind: 'booking', resourceId: intent.offerId, requestHash: action.requestHash });
         await this.grants.consumeOnce(actorId, { id: grant.id, intentId: grant.intentId, expiresAt: grant.expiresAt }, { intentId: intent.id, intentVersion: intent.version, supplierLegalEntity: grant.supplierLegalEntity, travelerIds: grant.travelerIds, allowedFields: grant.allowedFields, purpose: grant.purpose, offerSnapshotHash: intent.selectedOfferSnapshotHash ?? '', authorizationRef: action.id });
-        await this.audit.append({ actorId, tripId: intent.tripId, intentId: intent.id, actionRequestId: action.id, mandateId: mandate.id, event: 'BookingAuthorizationConsumed', redactedPayload: { intentVersion: intent.version, supplierId: intent.supplierId, offerId: intent.offerId } });
+        await this.audit.append({ actorId, tripId: intent.tripId, intentId: intent.id, actionRequestId: action.id, mandateId: mandate.id, requestId: input.requestId, correlationId: input.correlationId, event: 'BookingAuthorizationConsumed', redactedPayload: { intentVersion: intent.version, supplierId: intent.supplierId, offerId: intent.offerId } });
         this.metrics?.auditAppends.inc(1, { event: 'BookingAuthorizationConsumed' });
         await this.outbox.append({ eventId: randomUUID(), aggregateId: intent.id, eventType: 'BookingAuthorizationConsumed', redactedPayload: { actorId, actionRequestId: action.id, mandateId: mandate.id } });
       });

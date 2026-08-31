@@ -143,6 +143,7 @@ export interface AgentRunsTable {
   tool_call_summaries_json: string;
   action_requests_json: string;
   next_step: string | null;
+  correlation_id: string | null;
   current_trip_version: number;
   created_at: string;
   updated_at: string;

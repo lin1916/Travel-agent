@@ -16,7 +16,9 @@ export interface PlanningMetrics {
   toolCalls: { inc(value?: number, labels?: Record<string, string>): void };
   supplierErrors: { inc(value?: number, labels?: Record<string, string>): void };
   supplierLatency: { observe(value: number, labels?: Record<string, string>): void };
-  modelCost: { observe(value: number, labels?: Record<string, string>): void };
+  modelLatency?: { observe(value: number, labels?: Record<string, string>): void };
+  /** @deprecated use modelLatency; retained for compatibility with existing injectors. */
+  modelCost?: { observe(value: number, labels?: Record<string, string>): void };
 }
 
 export interface TripVersionReader {
@@ -85,7 +87,7 @@ export class PlanningOrchestrator {
       currentTripVersion: run.currentTripVersion, redactedOffers: [], requestedRisk,
     };
     const output: StructuredAgentOutput = await this.provider.generatePlan(context);
-    this.metrics?.modelCost.observe(Date.now() - modelStartedAt, { risk: requestedRisk });
+    (this.metrics?.modelLatency ?? this.metrics?.modelCost)?.observe(Date.now() - modelStartedAt, { risk: requestedRisk });
     const authoritativeTrip = this.tripReader ? await this.tripReader.getAny(run.tripId) : null;
     const summaries: ToolCallSummary[] = [];
     const results = await Promise.all(output.toolCalls.map(async call => {

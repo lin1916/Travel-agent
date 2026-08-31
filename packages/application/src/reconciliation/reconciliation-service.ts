@@ -30,7 +30,7 @@ export interface SupplierOrderView {
 }
 
 export interface ReconciliationService {
-  reconcile(orderId: string, source: ReconciliationSource): Promise<ReconciliationResult>;
+  reconcile(orderId: string, source: ReconciliationSource, context?: { requestId?: string; correlationId?: string }): Promise<ReconciliationResult>;
 }
 
 export interface ReconciliationOrderStore {
@@ -88,13 +88,13 @@ export class ReconciliationServiceImpl implements ReconciliationService {
     this.id = options.id ?? randomUUID;
   }
 
-  async reconcile(orderId: string, source: ReconciliationSource): Promise<ReconciliationResult> {
+  async reconcile(orderId: string, source: ReconciliationSource, context: { requestId?: string; correlationId?: string } = {}): Promise<ReconciliationResult> {
     const order = await this.orders.get(orderId);
     if (!order) throw new Error(`supplier order not found: ${orderId}`);
     const orderRef = await this.orders.getOrderRef(orderId);
     const adapter = this.adapters.get(order.supplierId);
     if (!orderRef || !adapter) {
-      return this.manualReview(order, source, 'supplier order reference or adapter unavailable');
+      return this.manualReview(order, source, 'supplier order reference or adapter unavailable', context);
     }
 
     let lastSnapshot: SupplierOrderSnapshot | undefined;
@@ -110,18 +110,18 @@ export class ReconciliationServiceImpl implements ReconciliationService {
       }
       if (!compatible(order.lifecycleStatus, lastSnapshot.lifecycleStatus)) {
         const reason = `supplier lifecycle ${lastSnapshot.lifecycleStatus} conflicts with ${order.lifecycleStatus}`;
-        return this.discrepancy(order, source, reason);
+        return this.discrepancy(order, source, reason, context);
       }
-      return this.matched(order, lastSnapshot, source);
+      return this.matched(order, lastSnapshot, source, context);
     }
 
     const reason = lastSnapshot
       ? `supplier state remained unknown after ${this.maxAttempts} attempts`
       : `supplier could not be queried after ${this.maxAttempts} attempts`;
-    return this.manualReview(order, source, reason);
+    return this.manualReview(order, source, reason, context);
   }
 
-  private async matched(order: SupplierOrderView, snapshot: SupplierOrderSnapshot, source: ReconciliationSource): Promise<ReconciliationResult> {
+  private async matched(order: SupplierOrderView, snapshot: SupplierOrderSnapshot, source: ReconciliationSource, context: { requestId?: string; correlationId?: string }): Promise<ReconciliationResult> {
     const updated: SupplierOrderView = {
       ...order,
       lifecycleStatus: snapshot.lifecycleStatus,
@@ -130,23 +130,23 @@ export class ReconciliationServiceImpl implements ReconciliationService {
       lastUpdatedAt: this.now().toISOString(),
       requiredUserAction: undefined,
     };
-    await this.persist(updated, source, 'SupplierOrderReconciled');
+    await this.persist(updated, source, 'SupplierOrderReconciled', undefined, context);
     return { orderId: order.id, status: 'matched', lifecycleStatus: updated.lifecycleStatus };
   }
 
-  private async discrepancy(order: SupplierOrderView, source: ReconciliationSource, reason: string): Promise<ReconciliationResult> {
+  private async discrepancy(order: SupplierOrderView, source: ReconciliationSource, reason: string, context: { requestId?: string; correlationId?: string }): Promise<ReconciliationResult> {
     const updated = { ...order, reconciliationStatus: 'discrepancy' as const, requiredUserAction: 'manual_review', lastUpdatedAt: this.now().toISOString() };
-    await this.persist(updated, source, 'ReconciliationRequired', reason);
+    await this.persist(updated, source, 'ReconciliationRequired', reason, context);
     return { orderId: order.id, status: 'discrepancy', lifecycleStatus: order.lifecycleStatus, reason };
   }
 
-  private async manualReview(order: SupplierOrderView, source: ReconciliationSource, reason: string): Promise<ReconciliationResult> {
+  private async manualReview(order: SupplierOrderView, source: ReconciliationSource, reason: string, context: { requestId?: string; correlationId?: string } = {}): Promise<ReconciliationResult> {
     const updated = { ...order, reconciliationStatus: 'manual_review' as const, requiredUserAction: 'manual_review', lastUpdatedAt: this.now().toISOString() };
-    await this.persist(updated, source, 'ReconciliationRequired', reason);
+    await this.persist(updated, source, 'ReconciliationRequired', reason, context);
     return { orderId: order.id, status: 'manual_review', lifecycleStatus: order.lifecycleStatus, reason };
   }
 
-  private async persist(order: SupplierOrderView, source: ReconciliationSource, eventType: string, reason?: string): Promise<void> {
+  private async persist(order: SupplierOrderView, source: ReconciliationSource, eventType: string, reason?: string, context: { requestId?: string; correlationId?: string } = {}): Promise<void> {
     const occurredAt = this.now().toISOString();
     const redactedPayload: Record<string, unknown> = {
       orderId: order.id,
@@ -163,8 +163,8 @@ export class ReconciliationServiceImpl implements ReconciliationService {
       aggregate_id: order.id,
       schema_version: 1,
       occurred_at: occurredAt,
-      request_id: `reconcile:${order.id}`,
-      correlation_id: `reconcile:${order.id}`,
+      request_id: context.requestId ?? `reconcile:${order.id}`,
+      correlation_id: context.correlationId ?? context.requestId ?? `reconcile:${order.id}`,
       redacted_payload: redactedPayload,
     });
   }

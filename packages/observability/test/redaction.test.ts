@@ -34,6 +34,6 @@ describe('redacted observability', () => {
     travel.unknownOrders.inc();
     expect(travel.unknownOrders.value()).toBe(1);
     expect(travel.supplierErrors).toBeDefined();
-    expect(travel.modelCost).toBeDefined();
+    expect(travel.modelLatency).toBeDefined();
   });
 });

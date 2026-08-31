@@ -44,3 +44,17 @@
 - RED: added regressions for production authorization fail-closed and request correlation/metrics; before the fix `booking-service.test.ts` and `planning-orchestrator.test.ts` each failed for the expected missing behavior.
 - GREEN: `pnpm --filter @travel/application test -- --run test/booking-service.test.ts` — 39/39 tests passed; `pnpm --filter @travel/agent-runtime test -- --run test/planning-orchestrator.test.ts` — 9/9 passed; `pnpm --filter @travel/contracts build`, `pnpm --filter @travel/agent-runtime build`, and `pnpm --filter @travel/api typecheck` passed.
 - Added production fail-closed guard for missing durable audit/transaction providers, request correlation propagation into AgentContext, and runtime metrics hooks for planning, action requests, booking audit, supplier errors, and unknown orders.
+
+## Fix round 3
+
+- Added provider-issued opaque traveler-reference validation at API intake and Vault traveler storage boundaries.
+- Added HTTPS/allowlist/SSRF rejection and bounded `AbortSignal` timeouts to the actual API→Vault fetch client.
+- Persisted AgentRun correlation IDs through migration `013_audit` and repository serialization; propagated request/correlation IDs through webhook task payloads, reconciliation jobs/events, and booking authorization audit records.
+- Composed `BookingRepository` and durable transaction wrappers when `DATABASE_URL` is configured; missing durable providers fail closed outside tests.
+- Renamed the model metric to `model_latency_ms` (with compatibility fallback for existing injected metric sinks), avoiding false cost semantics.
+
+### Fix-round 3 verification
+
+- RED: new Vault egress, AgentRun correlation, and model metric regressions failed before implementation (missing egress guard, missing persisted correlation field, and undefined `modelLatency`).
+- GREEN: Vault egress regression passed; AgentRun correlation round-trip passed; model metric suite passed; application booking suite passed (39/39); webhook API suite passed (3/3).
+- Typecheck/build/lint passed for affected packages. Full API suites remain PostgreSQL-gated without `DATABASE_URL`; this is an environment gate, not a production fallback.

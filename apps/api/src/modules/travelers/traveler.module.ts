@@ -1,4 +1,5 @@
 import { Module, ServiceUnavailableException } from '@nestjs/common';
+import { isAllowedOutboundUrl, supplierRequestOptions } from '@travel/security';
 import {
   createDatabase,
   InMemoryTravelerVaultRefRepository,
@@ -18,13 +19,14 @@ export {
   type TravelerVaultClient,
 } from './traveler-vault-client.js';
 
-class VaultHttpClient implements TravelerVaultClient {
-  constructor(private readonly baseUrl: string | undefined) {}
+export class VaultHttpClient implements TravelerVaultClient {
+  constructor(private readonly baseUrl: string | undefined, private readonly allowlist: readonly string[] = (process.env.VAULT_ALLOWED_HOSTS ?? '').split(',').map(value => value.trim()).filter(Boolean), private readonly timeoutMs = Number(process.env.VAULT_REQUEST_TIMEOUT_MS ?? 5000)) {}
 
   private async post(path: string, body: unknown, method = 'POST', ownerId?: string): Promise<unknown> {
-    if (!this.baseUrl) throw new ServiceUnavailableException('traveler vault is unavailable');
+    if (!this.baseUrl || !isAllowedOutboundUrl(this.baseUrl, this.allowlist)) throw new ServiceUnavailableException('traveler vault is unavailable');
     const serviceToken = process.env.VAULT_INTERNAL_SERVICE_TOKEN;
     if (!serviceToken) throw new ServiceUnavailableException('traveler vault is unavailable');
+    const timeout = supplierRequestOptions(this.timeoutMs);
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -33,6 +35,7 @@ class VaultHttpClient implements TravelerVaultClient {
         ...(ownerId ? { 'x-vault-owner-id': ownerId } : {}),
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeout.timeoutMs),
     });
     if (!response.ok) throw new ServiceUnavailableException('traveler vault is unavailable');
     return response.json();

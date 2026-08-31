@@ -13,6 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { TravelerVaultRefStore } from '@travel/persistence';
+import { isOpaqueReference } from '@travel/security';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard.js';
 import {
   TRAVELER_VAULT_CLIENT,
@@ -37,6 +38,7 @@ export class TravelerController {
 
   @Post()
   async store(@Req() request: AuthenticatedRequest, @Body() body: StoreFieldsBody) {
+    if (!isOpaqueReference(body.travelerId)) throw new ForbiddenException('traveler reference is not provider-issued');
     try {
       const stored = await this.vault.storeFields(request.actor!.actorId, body);
       await this.refs.save({

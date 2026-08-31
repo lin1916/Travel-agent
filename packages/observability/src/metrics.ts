@@ -8,7 +8,7 @@ export interface TravelMetrics {
   interventions: Counter;
   webhookEvents: Counter;
   auditAppends: Counter;
-  modelCost: Histogram;
+  modelLatency: Histogram;
   supplierLatency: Histogram;
   queueAge: Histogram;
 }
@@ -24,7 +24,7 @@ export function createTravelMetrics(registry: MetricsRegistry = metrics): Travel
     interventions: registry.counter('interventions_total'),
     webhookEvents: registry.counter('webhook_events_total'),
     auditAppends: registry.counter('audit_appends_total'),
-    modelCost: registry.histogram('model_cost_cents'),
+    modelLatency: registry.histogram('model_latency_ms'),
     supplierLatency: registry.histogram('supplier_latency_ms'),
     queueAge: registry.histogram('queue_age_ms'),
   };

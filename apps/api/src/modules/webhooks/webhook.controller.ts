@@ -15,6 +15,8 @@ export interface WebhookAcceptance {
   payloadHash: string;
   taskId: string;
   taskPayload: Record<string, unknown>;
+  requestId?: string;
+  correlationId?: string;
 }
 
 export interface WebhookIntake {
@@ -50,6 +52,9 @@ export class WebhookController {
     const rawBody = request.rawBody;
     if (!rawBody) throw new BadRequestException('raw webhook body is required');
     const headers = Object.fromEntries(Object.entries(inputHeaders).flatMap(([key, value]) => typeof value === 'string' ? [[key.toLowerCase(), value]] : []));
+    const requestId = headers['x-request-id'] ?? `webhook:${supplierId}:${headers['x-webhook-event-id'] ?? 'unknown'}`;
+    const correlationId = headers['x-correlation-id'] ?? requestId;
+    const hasCallerCorrelation = Boolean(headers['x-request-id'] || headers['x-correlation-id']);
     const verified = this.verifier.verify({ ...headers, 'x-supplier-id': supplierId }, rawBody);
     const adapter = this.adapters.get(supplierId);
     if (!adapter?.parseWebhook) throw new ServiceUnavailableException('supplier webhook adapter unavailable');
@@ -71,6 +76,7 @@ export class WebhookController {
       externalEventId: verified.externalEventId,
       orderRef: verified.orderRef,
       source: 'webhook',
+      ...(hasCallerCorrelation ? { requestId, correlationId } : {}),
     } as const;
     const accepted = await this.intake.accept({
       supplierId,
@@ -79,6 +85,8 @@ export class WebhookController {
       payloadHash: createHash('sha256').update(rawBody).digest('hex'),
       taskId,
       taskPayload,
+      requestId,
+      correlationId,
     });
     if (!accepted) throw new ConflictException('duplicate webhook event');
     return { accepted: true };

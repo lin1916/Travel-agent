@@ -2,9 +2,10 @@ import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Param, Po
 import { BookingServiceImpl } from '@travel/application';
 import { ApplicationError } from '@travel/application';
 import { z } from 'zod';
+import { isOpaqueReference } from '@travel/security';
 import { OfferKindSchema } from '@travel/contracts';
 
-const CreateSchema = z.object({ id: z.string().min(1), offerId: z.string().min(1), offerKind: OfferKindSchema, supplierId: z.string().min(1), selectedOfferSnapshotHash: z.string().min(1), originalPriceCents: z.number().int().nonnegative(), refundRulesHash: z.string().min(1), travelerDataGrantId: z.string().min(1), travelerDataGrantExpiresAt: z.string().datetime({ offset: true }).optional(), travelerIds: z.array(z.string().min(1)).min(1).max(6).optional(), requestedSensitiveFields: z.array(z.string().min(1)).min(1).optional(), travelerDataPurpose: z.string().min(1).optional(), supplierLegalEntity: z.string().min(1).optional(), refundable: z.boolean().optional(), startsAt: z.string().datetime({ offset: true }).optional(), endsAt: z.string().datetime({ offset: true }).optional() }).strict();
+const CreateSchema = z.object({ id: z.string().min(1), offerId: z.string().min(1), offerKind: OfferKindSchema, supplierId: z.string().min(1), selectedOfferSnapshotHash: z.string().min(1), originalPriceCents: z.number().int().nonnegative(), refundRulesHash: z.string().min(1), travelerDataGrantId: z.string().min(1), travelerDataGrantExpiresAt: z.string().datetime({ offset: true }).optional(), travelerIds: z.array(z.string().min(1)).min(1).max(6).refine(values => values.every(isOpaqueReference), 'traveler references must be provider-issued opaque values').optional(), requestedSensitiveFields: z.array(z.string().min(1)).min(1).optional(), travelerDataPurpose: z.string().min(1).optional(), supplierLegalEntity: z.string().min(1).optional(), refundable: z.boolean().optional(), startsAt: z.string().datetime({ offset: true }).optional(), endsAt: z.string().datetime({ offset: true }).optional() }).strict();
 const CommitSchema = z.object({ expectedVersion: z.number().int().positive(), actionRequestId: z.string().min(1).optional(), mandateId: z.string().min(1).optional(), idempotencyKey: z.string().min(1), selectedOfferSnapshotHash: z.string().min(1) }).strict();
 
 @Controller('v1')
@@ -22,11 +23,11 @@ export class BookingController {
 
   @Post('booking-intents/:intentId/commit')
   @HttpCode(HttpStatus.ACCEPTED)
-  async commit(@Headers('x-actor-id') actorId: string, @Param('intentId') intentId: string, @Body() body: any) {
+  async commit(@Headers('x-actor-id') actorId: string, @Headers('x-request-id') requestId: string | undefined, @Headers('x-correlation-id') correlationId: string | undefined, @Param('intentId') intentId: string, @Body() body: any) {
     if (!actorId) throw new ApplicationError('unauthorized');
     const parsed = CommitSchema.safeParse(body);
     if (!parsed.success) throw new ApplicationError('validation_error', parsed.error.issues[0]?.message);
-    return this.service.commit(actorId, { ...parsed.data, intentId });
+    return this.service.commit(actorId, { ...parsed.data, intentId, requestId, correlationId });
   }
 
   @Get('booking-intents/:intentId')

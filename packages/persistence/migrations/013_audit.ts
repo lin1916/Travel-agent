@@ -1,6 +1,7 @@
 import { sql, type Kysely } from 'kysely';
 import type { Database } from '../src/types.js';
 export async function up(db: Kysely<Database>): Promise<void> {
+  await sql`alter table agent_runs add column if not exists correlation_id varchar(256)`.execute(db);
   await db.schema.createTable('audit_entries').ifNotExists()
     .addColumn('id','varchar(128)', col=>col.primaryKey())
     .addColumn('trip_id','varchar(128)', col=>col.references('trips.id').onDelete('cascade'))

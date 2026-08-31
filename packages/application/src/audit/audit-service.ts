@@ -10,6 +10,8 @@ export interface BookingAuthorizationAuditEvent {
   mandateId: string;
   event: string;
   redactedPayload: Record<string, unknown>;
+  requestId?: string;
+  correlationId?: string;
 }
 
 export class DurableBookingAuditSink {
@@ -28,8 +30,8 @@ export class DurableBookingAuditSink {
       reason: 'governed booking authorization consumed',
       mandateVersion: undefined,
       grantRef: event.actionRequestId,
-      requestId: event.actionRequestId,
-      correlationId: event.actionRequestId,
+      requestId: event.requestId ?? event.actionRequestId,
+      correlationId: event.correlationId ?? event.requestId ?? event.actionRequestId,
       occurredAt: this.now(),
     });
   }

@@ -1,0 +1,3 @@
+import { describe, expect, it } from 'vitest';
+import { serializeAgentRun, deserializeAgentRun } from '../src/repositories/agent-run-repository.js';
+describe('agent run correlation persistence', () => { it('round trips correlation id', () => { const row=serializeAgentRun({ runId:'run-1',tripId:'trip-1',actorId:'actor',correlationId:'corr-1',status:'running',userMessage:'',currentTripVersion:1,assistantMessage:'',missingFields:[],toolCalls:[],actionRequests:[],toolCallSummaries:[],createdAt:'2026-01-01T00:00:00Z',updatedAt:'2026-01-01T00:00:00Z' }); expect(deserializeAgentRun(row).correlationId).toBe('corr-1'); }); });
