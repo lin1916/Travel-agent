@@ -44,9 +44,15 @@ importers:
       '@travel/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@travel/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
       '@travel/persistence':
         specifier: workspace:*
         version: link:../../packages/persistence
+      '@travel/security':
+        specifier: workspace:*
+        version: link:../../packages/security
       '@travel/supplier-adapters':
         specifier: workspace:*
         version: link:../../packages/supplier-adapters
@@ -299,6 +305,21 @@ importers:
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
+      eslint:
+        specifier: ^9.24.0
+        version: 9.39.5(supports-color@7.2.0)
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.1.1
+        version: 3.2.7(@types/node@22.20.1)(supports-color@7.2.0)(tsx@4.23.12)
+
+  packages/observability:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.3
+        version: 22.20.1
       eslint:
         specifier: ^9.24.0
         version: 9.39.5(supports-color@7.2.0)

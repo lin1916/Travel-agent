@@ -1,0 +1,12 @@
+openapi: 3.0.3
+info: { title: Travel Agent API, version: 1.0.0 }
+paths:
+  /v1/trips/{tripId}/audit:
+    get:
+      parameters:
+        - { name: tripId, in: path, required: true, schema: { type: string } }
+        - { name: x-actor-id, in: header, required: true, schema: { type: string } }
+      responses: { '200': { description: Audit entries } }
+  /metrics:
+    get:
+      responses: { '200': { description: Metrics snapshot } }

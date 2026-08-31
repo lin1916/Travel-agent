@@ -13,9 +13,12 @@ import { BookingModule } from './modules/bookings/booking.module.js';
 import { EventModule } from './modules/events/event.module.js';
 import { OrderModule } from './modules/orders/order.module.js';
 import { WebhookModule } from './modules/webhooks/webhook.module.js';
+import { AuditModule } from './modules/audit/audit.module.js';
+import { MetricsModule } from './modules/metrics/metrics.module.js';
 
 @Module({
-  imports: [TripModule, ItineraryModule, BudgetModule, SearchModule, AgentModule, AuthModule, TravelerModule, MandateModule, ActionRequestModule, BookingModule, WebhookModule, EventModule, OrderModule],
+  imports: [TripModule, ItineraryModule, BudgetModule, SearchModule, AgentModule, AuthModule, TravelerModule, MandateModule, ActionRequestModule, BookingModule, WebhookModule, EventModule, OrderModule, AuditModule, MetricsModule],
   controllers: [HealthController],
 })
 export class AppModule {}
+

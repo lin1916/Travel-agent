@@ -11,6 +11,7 @@ import { up as upBookingsOrders } from '../../migrations/009_bookings_orders.js'
 import { up as upWebhooksReconciliation } from '../../migrations/010_webhooks_reconciliation.js';
 import { up as upInboxDeliveryClaims } from '../../migrations/011_inbox_delivery_claims.js';
 import { up as upAfterSales } from '../../migrations/012_after_sales.js';
+import { up as upAudit } from '../../migrations/013_audit.js';
 import type { Database } from '../types.js';
 
 type Migration = { name: string; up: (db: Kysely<Database>) => Promise<void> };
@@ -28,6 +29,7 @@ export const migrations: Migration[] = [
   { name: '010_webhooks_reconciliation', up: upWebhooksReconciliation },
   { name: '011_inbox_delivery_claims', up: upInboxDeliveryClaims },
   { name: '012_after_sales', up: upAfterSales },
+  { name: '013_audit', up: upAudit },
 ];
 
 export async function migrateToLatest(db: Kysely<Database>): Promise<void> {
@@ -58,3 +60,4 @@ export async function migrateToLatest(db: Kysely<Database>): Promise<void> {
     });
   }
 }
+

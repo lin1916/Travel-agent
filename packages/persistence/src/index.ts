@@ -16,3 +16,4 @@ export * from './repositories/webhook-repository.js';
 export * from './repositories/offer-repository.js';
 export * from './outbox/outbox-repository.js';
 export * from './inbox/inbox-repository.js';
+export * from './repositories/audit-repository.js';

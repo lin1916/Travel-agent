@@ -16,3 +16,6 @@ export { OrderQueryService } from './orders/order-query-service.js';
 export type { OrderProjection, OrderQueryStore } from './orders/order-query-service.js';
 export * from './orders/cancellation-service.js';
 export * from './orders/refund-service.js';
+
+export * from './audit/audit-service.js';
+

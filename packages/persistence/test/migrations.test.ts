@@ -16,6 +16,7 @@ describe('database migrations', () => {
       '010_webhooks_reconciliation',
       '011_inbox_delivery_claims',
       '012_after_sales',
+      '013_audit',
     ]);
     expect(migrations[3]?.name).toBe('004_agent_runs');
     expect(migrations[4]?.name).toBe('005_agent_run_summaries');
@@ -26,5 +27,6 @@ describe('database migrations', () => {
     expect(migrations[9]?.name).toBe('010_webhooks_reconciliation');
     expect(migrations[10]?.name).toBe('011_inbox_delivery_claims');
     expect(migrations[11]?.name).toBe('012_after_sales');
+    expect(migrations[12]?.name).toBe('013_audit');
   });
 });

@@ -164,6 +164,7 @@ export interface ActionRequestsTable { id: string; trip_id: string; owner_id: st
 export interface BookingIntentsTable { id: string; trip_id: string; owner_id: string; offer_id: string; offer_kind: string; status: string; version: number; payload_json: string; created_at: string; updated_at: string }
 export interface SupplierOrdersTable { id: string; intent_id: string; supplier_id: string; lifecycle_status: string; reconciliation_status: string; payload_json: string; external_idempotency_key: string; payment_location: Generated<string>; ticket_or_reservation_ref: Generated<string | null>; refund_rules: Generated<string>; required_user_action: Generated<string | null>; last_updated_at: Generated<string>; created_at: string }
 export interface WebhookReceiptsTable { supplier_id: string; external_event_id: string; order_id: string; payload_hash: string; task_id: string; received_at: string }
+export interface AuditEntriesTable { id: string; trip_id: string | null; actor_id: string; action: string; resource: string; supplier_id: string | null; allowed_fields_json: string | null; policy_result: string; reason: string | null; mandate_version: number | null; grant_ref: string | null; request_id: string; correlation_id: string; occurred_at: string; created_at: string }
 
 export interface Database {
   trips: TripsTable;
@@ -184,6 +185,7 @@ export interface Database {
   booking_intents: BookingIntentsTable;
   supplier_orders: SupplierOrdersTable;
   webhook_receipts: WebhookReceiptsTable;
+  audit_entries: AuditEntriesTable;
 }
 
 export type TripRow = Selectable<TripsTable>;
@@ -437,3 +439,6 @@ export function eventToRow(event: EventEnvelope): Insertable<EventLogTable> {
     payload_json: JSON.stringify(event.redacted_payload),
   };
 }
+
+
+
