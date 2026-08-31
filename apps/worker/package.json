@@ -4,12 +4,12 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "node dist/main.js",
-    "prebuild": "pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
+    "prebuild": "pnpm --filter @travel/observability build && pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "build": "tsc -p tsconfig.json",
-    "pretypecheck": "pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
+    "pretypecheck": "pnpm --filter @travel/observability build && pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
-    "pretest": "pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
+    "pretest": "pnpm --filter @travel/observability build && pnpm --filter @travel/application build && pnpm --filter @travel/persistence build && pnpm --filter @travel/supplier-adapters build",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --passWithNoTests",
     "test:e2e": "vitest run --passWithNoTests"
@@ -24,6 +24,7 @@
   "dependencies": {
     "@travel/application": "workspace:*",
     "@travel/contracts": "workspace:*",
+    "@travel/observability": "workspace:*",
     "@travel/persistence": "workspace:*",
     "@travel/supplier-adapters": "workspace:*"
   },
