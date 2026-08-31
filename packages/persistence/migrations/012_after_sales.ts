@@ -12,4 +12,4 @@ export async function up(db: Kysely<Database>): Promise<void> {
     .addColumn('created_at', 'timestamptz', col => col.notNull().defaultTo(sql.raw('now()')))
     .execute();
 }
-export async function down(db: Kysely<Database>): Promise<void> { await db.schema.dropTable('after_sales_requests').ifExists().execute(); }
+export async function down(db: Kysely<Database>): Promise<void> { await db.schema.dropTable('after_sales_requests').ifExists().execute(); await sql`alter table supplier_orders drop column if exists after_sales_json`.execute(db); }

@@ -142,8 +142,10 @@ export class BookingRepository {
     return row ? orderFromRow(row) : null;
   }
 
-  async listByTrip(tripId: string): Promise<SupplierOrderReconciliationView[]> {
-    const rows = await this.db.selectFrom('supplier_orders').innerJoin('booking_intents', 'booking_intents.id', 'supplier_orders.intent_id').select(['supplier_orders.id', 'supplier_orders.supplier_id', 'supplier_orders.lifecycle_status', 'supplier_orders.reconciliation_status', 'supplier_orders.payment_location', 'supplier_orders.ticket_or_reservation_ref', 'supplier_orders.refund_rules', 'supplier_orders.required_user_action', 'supplier_orders.last_updated_at']).where('booking_intents.trip_id', '=', tripId).orderBy('supplier_orders.created_at', 'desc').execute();
+  async listByTrip(tripId: string, actorId?: string): Promise<SupplierOrderReconciliationView[]> {
+    let query = this.db.selectFrom('supplier_orders').innerJoin('booking_intents', 'booking_intents.id', 'supplier_orders.intent_id').select(['supplier_orders.id', 'supplier_orders.supplier_id', 'supplier_orders.lifecycle_status', 'supplier_orders.reconciliation_status', 'supplier_orders.payment_location', 'supplier_orders.ticket_or_reservation_ref', 'supplier_orders.refund_rules', 'supplier_orders.required_user_action', 'supplier_orders.last_updated_at']).where('booking_intents.trip_id', '=', tripId);
+    if (actorId) query = query.where('booking_intents.owner_id', '=', actorId);
+    const rows = await query.orderBy('supplier_orders.created_at', 'desc').execute();
     return rows.map(row => ({ id: row.id, supplierId: row.supplier_id, lifecycleStatus: row.lifecycle_status as SupplierOrderLifecycle, reconciliationStatus: row.reconciliation_status as ReconciliationStatus, paymentLocation: row.payment_location === 'supplier_page' ? 'supplier_page' : 'unknown', ...(row.ticket_or_reservation_ref ? { ticketOrReservationRef: row.ticket_or_reservation_ref } : {}), refundRules: row.refund_rules, lastUpdatedAt: new Date(row.last_updated_at).toISOString(), ...(row.required_user_action ? { requiredUserAction: row.required_user_action } : {}) }));
   }
 

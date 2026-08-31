@@ -12,6 +12,7 @@ import type { BudgetRepository } from '@travel/persistence';
 
 export class BudgetService {
   private readonly budgets = new Map<string, BudgetState>();
+  private readonly settlementKeys = new Map<string, { category: TravelCategory; amountCents: number; ledger: BudgetLedger }>();
 
   initialize(
     tripId: string,
@@ -51,11 +52,17 @@ export class BudgetService {
   }
 
   settlePaid(tripId: string, category: TravelCategory, amountCents: number, idempotencyKey: string): BudgetLedger {
+    const settlementKey = `${tripId}:${idempotencyKey}`;
+    const previous = this.settlementKeys.get(settlementKey);
+    if (previous) {
+      if (previous.category !== category || previous.amountCents !== amountCents) throw new Error('budget settlement idempotency key conflict');
+      return structuredClone(previous.ledger);
+    }
     const state = this.budgets.get(tripId) ?? createBudgetState(createEmptyLedger(0));
-    if (state.appliedKeys.has(idempotencyKey)) return structuredClone(state.ledger);
     const committed = transitionBudgetAmount(state, category, 'reserved', 'committed', amountCents, `${idempotencyKey}:commit`);
     const paid = transitionBudgetAmount(committed, category, 'committed', 'paid', amountCents, `${idempotencyKey}:paid`);
     this.budgets.set(tripId, paid);
+    this.settlementKeys.set(settlementKey, { category, amountCents, ledger: structuredClone(paid.ledger) });
     return structuredClone(paid.ledger);
   }
 

@@ -8,6 +8,13 @@ describe('orders and after-sales', () => {
     const budget = new BudgetService(); budget.initialize('trip-1', 10000); budget.reserve('trip-1', 'transport', 2500, 'reserve-1'); budget.settlePaid('trip-1', 'transport', 2500, 'settle-1'); budget.settlePaid('trip-1', 'transport', 2500, 'settle-1');
     expect(budget.get('trip-1')).toMatchObject({ reserved: { amountCents: 0 }, committed: { amountCents: 0 }, paid: { amountCents: 2500 } });
   });
+
+  it('returns the same ledger for repeated settlement with the original key', () => {
+    const budget = new BudgetService(); budget.initialize('trip-2', 10000); budget.reserve('trip-2', 'transport', 2500, 'reserve-2');
+    const first = budget.settlePaid('trip-2', 'transport', 2500, 'settle-2');
+    const second = budget.settlePaid('trip-2', 'transport', 2500, 'settle-2');
+    expect(second).toEqual(first);
+  });
   it('creates cancellation and refund decisions before execution', async () => {
     const actions = new ActionRequestService(); const cancellation = new CancellationService(actions); const refund = new RefundService(actions);
     const cancel = await cancellation.requestCancel({ orderId: 'order-1', reason: '行程变化', expectedVersion: 1 }, 'actor-1', 'trip-1');
