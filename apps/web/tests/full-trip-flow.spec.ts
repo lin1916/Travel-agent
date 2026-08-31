@@ -14,6 +14,7 @@ test('full mock workflow renders planning state and survives refresh boundary', 
   await expect(page.getByRole('heading', { name: '杭州行程工作台' })).toBeVisible();
   await expect(page.getByText('供应商模式：Mock/Sandbox')).toBeVisible();
   await expect(page.getByText('保存与预订需登录')).toBeVisible();
+  await expect(page.getByText('信息仅用于本次规划；Agent 输出为摘要，敏感字段不会出现在浏览器存储中。')).toBeVisible();
   await page.reload();
   await expect(page.getByRole('button', { name: '开始规划' })).toBeVisible();
 });

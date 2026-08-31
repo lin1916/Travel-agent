@@ -19,6 +19,8 @@ describe('full trip API fixture', () => {
     const response = await request(app.getHttpServer()).get('/fixture/full-trip');
     expect(response.status).toBe(200);
     expect(response.body.workflow).toContain('api_order_committed');
+    expect(response.body.auth.bookingRequiresLogin).toBe(true);
+    expect(response.body.travelerLimit.rejectedAt).toBe(7);
     expect(response.body.unknownOrder.reconciliationStatus).toBe('pending');
     await app.close();
   });

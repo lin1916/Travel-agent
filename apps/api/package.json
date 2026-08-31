@@ -8,7 +8,7 @@
     "pretypecheck": "pnpm --filter @travel/observability build && pnpm --filter @travel/security build && pnpm --filter @travel/application build",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
-    "pretest": "pnpm --filter @travel/observability build && pnpm --filter @travel/security build && pnpm --filter @travel/agent-runtime build && pnpm --filter @travel/application build",
+    "pretest": "pnpm --filter @travel/observability build && pnpm --filter @travel/security build && pnpm --filter @travel/agent-runtime build && pnpm --filter @travel/application build && pnpm --filter @travel/testkit build",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --passWithNoTests",
     "test:e2e": "vitest run --passWithNoTests"
