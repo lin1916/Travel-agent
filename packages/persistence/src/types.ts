@@ -261,9 +261,10 @@ const ALLOWED_TRAVELER_FIELD_NAMES = new Set(['fullName', 'dateOfBirth', 'passpo
 const ALLOWED_TRAVELER_PURPOSES = new Set(['ticketing', 'booking', 'reservation', 'supplier_fulfillment', 'traveler_verification']);
 const OPAQUE_TRAVELER_METADATA_KEYS = new Set(['grantid', 'authorizationref', 'travelerdatagrantid', 'travelerref', 'travelervaultref']);
 const TRAVELER_ENVELOPE_KEYS = new Set([...OPAQUE_TRAVELER_METADATA_KEYS, 'travelerids', 'travelercount', 'allowedfields', 'purpose']);
-// Opaque references are UUIDs or an approved prefix with labels ending in a numeric token (for example, vault-ref-1).
-// This bounded shape excludes free-form names while preserving the short references used by existing adapters/tests.
-const OPAQUE_REFERENCE_PATTERN = /^(?=.{1,128}$)(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|(?:vault-ref|traveler|ref|grant|decision|intent|trip|offer|order|auth|supplier|external|webhook|local|sha256)(?:[-_:][a-z0-9]+)*[-_:][0-9]+)$/;
+// Opaque references are UUIDs or an approved prefix followed by a bounded, high-entropy token.
+// A token must be at least 16 lowercase alphanumeric characters and contain both letters and digits;
+// free-form names and short human-readable labels are intentionally rejected.
+const OPAQUE_REFERENCE_PATTERN = /^(?=.{1,128}$)(?:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|(?:vault-ref|traveler|ref|grant|decision|intent|trip|offer|order|auth|supplier|external|webhook|local|sha256)[-_:](?=[a-z0-9]{16,128}$)(?=[a-z0-9]*[a-z])(?=[a-z0-9]*[0-9])[a-z0-9]{16,128})$/;
 
 function normalizedPayloadKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9]/g, '');

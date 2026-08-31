@@ -12,6 +12,11 @@ import { outboxRowToEnvelope } from '../src/outbox/outbox-repository.js';
 import { InboxRepository } from '../src/inbox/inbox-repository.js';
 import { WebhookRepository } from '../src/repositories/webhook-repository.js';
 
+const OPAQUE_TRAVELER_REF = 'traveler-7f4b9d2e1a6c8b3f0d5e7a9c2b4f6d8e';
+const OPAQUE_VAULT_REF = 'vault-ref-c9e8d7f6a5b4c3d2e1f0a9b8c7d6e5f4';
+const OPAQUE_GRANT_REF = 'grant-1a2b3c4d5e6f7890abcdeffedcba0987';
+const OPAQUE_DECISION_REF = 'decision-89abcdef01234567fedcba9876543210';
+
 describe('persistence boundary helpers', () => {
   it('fails closed when PostgreSQL configuration is absent', () => {
     expect(() => createDatabase(undefined)).toThrow(DatabaseConfigurationError);
@@ -28,9 +33,9 @@ describe('persistence boundary helpers', () => {
       occurred_at: '2026-08-26T00:00:00.000Z',
       request_id: 'request-1',
       correlation_id: 'correlation-1',
-      redacted_payload: { travelerRef: 'vault-ref-1' },
+      redacted_payload: { travelerRef: OPAQUE_VAULT_REF },
     });
-    expect(row.payload_json).toBe(JSON.stringify({ travelerRef: 'vault-ref-1' }));
+    expect(row.payload_json).toBe(JSON.stringify({ travelerRef: OPAQUE_VAULT_REF }));
     expect(row.payload_json).not.toContain('身份证');
   });
 
@@ -38,27 +43,27 @@ describe('persistence boundary helpers', () => {
     expect(() => assertDurablePayloadSafe({ orderId: 'order-1', passportNumber: 'plaintext-value' })).toThrow(/sensitive payload field/i);
     expect(() => assertDurablePayloadSafe({ traveler: { fullName: 'plaintext-value' } })).toThrow(/sensitive payload field/i);
     expect(() => assertDurablePayloadSafe({ rawBody: '[REDACTED]' })).toThrow(/sensitive payload field/i);
-    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'] })).not.toThrow();
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: OPAQUE_VAULT_REF, allowedFields: ['fullName'] })).not.toThrow();
   });
 
   it('rejects unknown plaintext nested in traveler-bound objects while allowing vault references and field metadata', () => {
     expect(() => assertDurablePayloadSafe({ traveler: { profile: { preferredAlias: 'Alice' } } })).toThrow(/traveler plaintext/i);
-    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'] })).not.toThrow();
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: OPAQUE_VAULT_REF, allowedFields: ['fullName'] })).not.toThrow();
   });
 
   it('rejects plaintext disguised as traveler reference metadata and accepts only opaque reference envelopes', () => {
     expect(() => assertDurablePayloadSafe({ traveler: { purpose: 'Alice Lovelace' } })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: 'private name' } })).toThrow(/traveler plaintext/i);
-    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', purpose: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
-    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', grantId: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
-    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', authorizationRef: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
-    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', travelerIds: ['Alice Lovelace'] })).toThrow(/traveler plaintext/i);
-    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1', travelerCount: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: OPAQUE_VAULT_REF, purpose: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: OPAQUE_VAULT_REF, grantId: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: OPAQUE_VAULT_REF, authorizationRef: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: OPAQUE_VAULT_REF, travelerIds: ['Alice Lovelace'] })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: OPAQUE_VAULT_REF, travelerCount: 'Alice Lovelace' })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({
-      travelerVaultRef: 'vault-ref-1', grantId: 'grant-1', authorizationRef: 'decision-1',
-      travelerIds: ['traveler-1'], travelerCount: 1, allowedFields: ['fullName'], purpose: 'ticketing',
+      travelerVaultRef: OPAQUE_VAULT_REF, grantId: OPAQUE_GRANT_REF, authorizationRef: OPAQUE_DECISION_REF,
+      travelerIds: [OPAQUE_TRAVELER_REF], travelerCount: 1, allowedFields: ['fullName'], purpose: 'ticketing',
     })).not.toThrow();
-    expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: 'vault-ref-1', allowedFields: ['fullName'] } })).not.toThrow();
+    expect(() => assertDurablePayloadSafe({ traveler: { travelerVaultRef: OPAQUE_VAULT_REF, allowedFields: ['fullName'] } })).not.toThrow();
   });
 
   it('rejects human-readable nested traveler references and malformed traveler ID arrays', () => {
@@ -66,20 +71,29 @@ describe('persistence boundary helpers', () => {
       traveler: { travelerRef: 'vault-ref-Alice-Lovelace' },
     })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({
-      traveler: { travelerRef: 'vault-ref-1', travelerIds: ['traveler-Jane-Doe'] },
+      traveler: { travelerRef: OPAQUE_VAULT_REF, travelerIds: ['traveler-Jane-Doe'] },
     })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-Alice-Lovelace' })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({ travelerIds: ['traveler-Jane-Doe'] })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({ travelerIds: ['traveler-Jane-1'] })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({
-      traveler: { travelerRef: 'vault-ref-1', travelerIds: 'traveler-1' },
+      traveler: { travelerRef: OPAQUE_VAULT_REF, travelerIds: 'traveler-1' },
     })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({
-      traveler: { travelerRef: 'vault-ref-1', travelerIds: Array.from({ length: 17 }, (_, index) => `traveler-${index + 1}`) },
+      traveler: { travelerRef: OPAQUE_VAULT_REF, travelerIds: Array.from({ length: 17 }, (_, index) => `traveler-${index + 1}`) },
     })).toThrow(/traveler plaintext/i);
     expect(() => assertDurablePayloadSafe({
-      traveler: { travelerRef: 'vault-ref-1', travelerIds: ['traveler-1'], travelerCount: 1, allowedFields: ['fullName'], purpose: 'ticketing' },
+      traveler: { travelerRef: OPAQUE_VAULT_REF, travelerIds: [OPAQUE_TRAVELER_REF], travelerCount: 1, allowedFields: ['fullName'], purpose: 'ticketing' },
     })).not.toThrow();
+  });
+
+  it('requires UUID or high-entropy opaque references instead of human-readable labels', () => {
+    expect(() => assertDurablePayloadSafe({ travelerRef: 'traveler-jane-1' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-alice-1' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerRef: 'traveler-1' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: 'vault-ref-1' })).toThrow(/traveler plaintext/i);
+    expect(() => assertDurablePayloadSafe({ travelerRef: OPAQUE_TRAVELER_REF })).not.toThrow();
+    expect(() => assertDurablePayloadSafe({ travelerVaultRef: '9f6f4f2a-5b7c-4d91-8e23-6a0b1c2d3e4f' })).not.toThrow();
   });
 
   it('reclaims the raced row identity after an external-event insert conflict', async () => {

@@ -165,3 +165,25 @@ RED/GREEN evidence:
 - GREEN: `pnpm lint` — 13 successful tasks.
 
 PostgreSQL integration behavior remains runtime-unverified because `DATABASE_URL` is not set.
+
+## Fix Round 5
+
+Closed the final durable traveler-reference gap by requiring UUIDs or high-entropy opaque tokens:
+
+- Approved-prefix references now require a single 16–128-character lowercase alphanumeric token containing both letters and digits; short IDs and human-readable labels such as `traveler-jane-1` and `vault-ref-alice-1` are rejected.
+- UUID references remain accepted.
+- Existing persistence fixtures that asserted accepted short references were updated to deterministic high-entropy tokens; no traveler plaintext is admitted into durable payloads.
+
+RED/GREEN evidence:
+
+- RED: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — 1 failed, 11 passed; the new regression showed `traveler-jane-1` was accepted.
+- GREEN: `pnpm --filter @travel/persistence exec vitest run test/persistence-unit.test.ts --reporter=dot` — 1 file, 12 passed.
+- GREEN: `pnpm --filter @travel/persistence test` — 4 files, 16 passed; 5 PostgreSQL files, 18 tests skipped because `DATABASE_URL` is unset.
+- GREEN: `pnpm --filter @travel/worker test` — 1 file, 10 passed.
+- GREEN: `pnpm --filter @travel/api exec vitest run test/webhook.e2e-spec.ts --reporter=dot` — 1 file, 3 passed.
+- GREEN: `pnpm --filter @travel/api exec vitest run test/sse-replay.e2e-spec.ts --reporter=dot` — 1 file, 3 passed.
+- GREEN: `pnpm --filter @travel/application exec vitest run test/reconciliation-service.test.ts --reporter=dot` — 1 file, 3 passed.
+- GREEN: `pnpm typecheck` — 13 successful tasks.
+- GREEN: `pnpm lint` — 13 successful tasks.
+
+PostgreSQL integration behavior remains runtime-unverified because `DATABASE_URL` is not set.
