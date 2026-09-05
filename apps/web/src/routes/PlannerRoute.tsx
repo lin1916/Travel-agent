@@ -1,33 +1,68 @@
-import { FormEvent, useState } from 'react';
-import { ApiClient, PublicApiError, type SearchResult, type AgentRunSummary } from '../lib/api-client';
-import type { OfferKind } from '@travel/contracts';
-import { TripWorkspace, type WorkspaceData } from '../features/trip/TripWorkspace';
+import { useEffect, useState } from 'react';
+import type { Conversation } from '@travel/contracts';
+import { ChatPanel } from '../features/chat/ChatPanel';
+import { TravelMap } from '../features/map/TravelMap';
+import { ConversationWorkspace, CONVERSATION_REFERENCE_KEY } from '../features/session/ConversationWorkspace';
+import { ApiClient, PublicApiError } from '../lib/api-client';
+
 const client = new ApiClient();
-const actorId = `anonymous-${crypto.randomUUID()}`;
-const categories: OfferKind[] = ['train', 'stay', 'attraction', 'dining'];
-export function PlannerRoute() {
-  const [workspace, setWorkspace] = useState<WorkspaceData>();
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setError(''); setLoading(true);
-    const form = new FormData(event.currentTarget);
-    const destination = String(form.get('destination') ?? '').trim();
-    const startsAt = `${form.get('startsAt')}T00:00:00.000+08:00`;
-    const endsAt = `${form.get('endsAt')}T00:00:00.000+08:00`;
-    const travelers = Number(form.get('travelers') ?? 1);
-    const totalBudgetCents = Number(form.get('budget') ?? 0) * 100;
-    try {
-      const trip = await client.createTrip({ destination, startsAt, endsAt, travelerCount: travelers, totalBudgetCents: totalBudgetCents || undefined }, actorId);
-      const results = await Promise.allSettled(categories.map(kind => client.search(trip.id, { kind, startsAt, endsAt, travelers }, actorId)));
-      const offers: WorkspaceData['offers'] = {}; const ranked: WorkspaceData['ranked'] = {}; const categoryInfo: WorkspaceData['categories'] = {};
-      results.forEach((result, index) => { const kind = categories[index]; if (result.status === 'fulfilled') { const value: SearchResult = result.value; offers[kind] = value.offers[kind] ?? []; ranked[kind] = value.ranked[kind] ?? []; categoryInfo[kind] = value.categories[kind] ?? { retryable: false }; } else { categoryInfo[kind] = { warning: result.reason instanceof Error ? result.reason.message : '暂时无法获取', retryable: true }; } });
-      const itinerary = await client.getItinerary(trip.id, actorId).catch(() => undefined);
-      let run: AgentRunSummary | undefined;
-      try { run = await client.startAgent({ tripId: trip.id, userMessage: `计划去${destination}，${form.get('startsAt')}到${form.get('endsAt')}，${travelers}人` }, actorId); } catch (agentError) { if (agentError instanceof PublicApiError) setError(agentError.message); }
-      setWorkspace({ destination, tripId: trip.id, offers, ranked, categories: categoryInfo, run, itinerary, totalBudgetCents });
-    } catch (requestError) { setError(requestError instanceof PublicApiError ? requestError.message : '暂时无法开始规划，请稍后重试。'); } finally { setLoading(false); }
+
+function storedConversationId(): string | undefined {
+  try {
+    const value = sessionStorage.getItem(CONVERSATION_REFERENCE_KEY);
+    if (!value) return undefined;
+    const reference = JSON.parse(value) as { conversationId?: unknown };
+    return typeof reference.conversationId === 'string' && reference.conversationId ? reference.conversationId : undefined;
+  } catch {
+    return undefined;
   }
-  if (workspace) return <TripWorkspace data={workspace} />;
-  return <main className="planner-shell"><section className="planner-intro"><span className="eyebrow">TRAVEL AGENT · PLANNING</span><h1>把下一段国内旅程，先想清楚。</h1><p>输入目的地和日期，获得可比较的交通、住宿、景点与餐饮建议。规划过程可匿名进行。</p></section><form className="planner-form" onSubmit={submit}><h2>开始规划</h2><label>目的地<input name="destination" aria-label="目的地" required placeholder="例如：杭州" /></label><div className="form-row"><label>出发日期<input name="startsAt" aria-label="出发日期" type="date" required /></label><label>返程日期<input name="endsAt" aria-label="返程日期" type="date" required /></label></div><div className="form-row"><label>出行人数<input name="travelers" aria-label="出行人数" type="number" min="1" max="6" defaultValue="2" required /></label><label>预算上限（元）<input name="budget" type="number" min="0" step="100" placeholder="可选" /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<button type="submit" disabled={loading}>{loading ? '正在整理选项…' : '开始规划'}</button><p className="form-footnote">不会把旅客姓名、证件、支付或预订信息写入 localStorage。</p></form></main>;
+}
+
+function saveConversationId(id: string): void {
+  try {
+    const existing = sessionStorage.getItem(CONVERSATION_REFERENCE_KEY);
+    const reference = existing ? JSON.parse(existing) as { lastEventId?: unknown } : {};
+    sessionStorage.setItem(CONVERSATION_REFERENCE_KEY, JSON.stringify({ conversationId: id, ...(typeof reference.lastEventId === 'string' ? { lastEventId: reference.lastEventId } : {}) }));
+  } catch { /* optional browser storage */ }
+}
+
+function BootstrapShell() {
+  return <main className="reference-workspace reference-landing conversation-bootstrap" aria-label="旅行规划工作台">
+    <div className="reference-layout">
+      <aside className="reference-sidebar" aria-label="旅行助手对话">
+        <div className="reference-sidebar__brand"><span className="reference-live-dot" title="规划服务在线" /><div><strong>Voyager Agent</strong><span>先聊旅行，再决定行程</span></div></div>
+        <ChatPanel />
+      </aside>
+      <section className="reference-map-stage" aria-label="地点探索工作区">
+        <TravelMap />
+        <div className="reference-map-search map-search section-block"><label htmlFor="bootstrap-place-search">搜索地点</label><div><span className="reference-search-icon" aria-hidden="true">⌕</span><input id="bootstrap-place-search" aria-label="搜索地点" placeholder="搜索景点、餐厅或酒店" /><span className="muted">正在连接</span></div></div>
+      </section>
+    </div>
+  </main>;
+}
+
+export function PlannerRoute() {
+  const [conversation, setConversation] = useState<Conversation>();
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let disposed = false;
+    async function bootstrap() {
+      try {
+        const id = storedConversationId();
+        const current = id ? await client.getConversation(id).catch(() => undefined) : undefined;
+        const next = current ?? await client.createConversation();
+        if (disposed) return;
+        saveConversationId(next.id);
+        setConversation(next);
+      } catch (requestError) {
+        if (!disposed) setError(requestError instanceof PublicApiError ? requestError.message : '暂时无法连接规划服务，请稍后重试。');
+      }
+    }
+    void bootstrap();
+    return () => { disposed = true; };
+  }, []);
+
+  if (!conversation) return <><BootstrapShell />{error && <p className="bootstrap-error" role="alert">{error}</p>}</>;
+  return <ConversationWorkspace initialConversation={conversation} client={client} />;
 }

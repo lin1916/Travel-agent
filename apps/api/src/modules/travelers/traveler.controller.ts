@@ -13,7 +13,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { TravelerVaultRefStore } from '@travel/persistence';
-import { isOpaqueReference } from '@travel/security';
+import { isOpaqueReference, isProviderIssuedOpaqueReference } from '@travel/security';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard.js';
 import {
   TRAVELER_VAULT_CLIENT,
@@ -38,8 +38,13 @@ export class TravelerController {
 
   @Post()
   async store(@Req() request: AuthenticatedRequest, @Body() body: StoreFieldsBody) {
-    if (!isOpaqueReference(body.travelerId)) throw new ForbiddenException('traveler reference is not provider-issued');
+    const validReference = process.env.NODE_ENV === 'production'
+      ? isProviderIssuedOpaqueReference(body.travelerId)
+      : isOpaqueReference(body.travelerId);
+    if (!validReference) throw new ForbiddenException('traveler reference is not provider-issued');
     try {
+      const existing = await this.refs.findByVaultTravelerId(body.travelerId);
+      if (!existing && await this.refs.countActiveByOwner(request.actor!.actorId) >= 6) throw new ForbiddenException('traveler limit exceeded');
       const stored = await this.vault.storeFields(request.actor!.actorId, body);
       await this.refs.save({
         id: stored.travelerId,
@@ -49,7 +54,8 @@ export class TravelerController {
         retentionUntil: stored.retentionUntil,
       });
       return stored;
-    } catch {
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
       throw new ServiceUnavailableException('traveler vault is unavailable');
     }
   }

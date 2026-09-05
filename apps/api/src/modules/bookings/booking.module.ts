@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { ActionRequestService, BookingServiceImpl, DurableBookingAuditSink, GovernedBookingAuthorization, InMemoryBookingStore, RecordingBookingAuditSink, type BookingPolicyFacts, type TravelerDataGrantContext, type TravelerDataGrantRef, type TravelerDataGrantStore } from '@travel/application';
+import { ActionRequestService, BookingServiceImpl, DurableBookingAuditSink, GovernedBookingAuthorization, InMemoryBookingStore, RecordingBookingAuditSink, RecordingBookingOutboxSink, type BookingPolicyFacts, type TravelerDataGrantContext, type TravelerDataGrantRef, type TravelerDataGrantStore } from '@travel/application';
 import { MockOrderService, RedirectTokenServiceImpl } from '@travel/supplier-adapters';
 import type { ActionRequestInput, PolicySnapshot } from '@travel/contracts';
 import { AuditRepository, BookingRepository, createDatabase } from '@travel/persistence';
@@ -9,9 +9,13 @@ import { ACTION_REQUEST_SERVICE } from '../action-requests/action-request.tokens
 import { ActionRequestModule } from '../action-requests/action-request.module.js';
 import { MANDATE_STORE } from '../mandates/mandate.tokens.js';
 import { MandateModule } from '../mandates/mandate.module.js';
+import { TravelerModule } from '../travelers/traveler.module.js';
+import { TRAVELER_VAULT_REF_STORE } from '../travelers/traveler-vault-client.js';
+import type { TravelerVaultRefStore } from '@travel/persistence';
 
 export const BOOKING_GRANT_STORE = Symbol('BOOKING_GRANT_STORE');
 export const BOOKING_AUDIT_SINK = Symbol('BOOKING_AUDIT_SINK');
+export const BOOKING_OUTBOX_SINK = Symbol('BOOKING_OUTBOX_SINK');
 
 /** Test-only grant boundary; production booking remains explicitly unavailable until a durable provider is configured. */
 export class InMemoryBookingGrantStore implements TravelerDataGrantStore {
@@ -47,7 +51,7 @@ class TestBookingFactsProvider {
 }
 
 @Module({
-  imports: [ActionRequestModule, MandateModule],
+  imports: [ActionRequestModule, MandateModule, TravelerModule],
   controllers: [BookingController],
   providers: [
     { provide: BOOKING_GRANT_STORE, useFactory: () => process.env.DATABASE_URL ? new UnavailableDurableGrantStore() : new InMemoryBookingGrantStore() },
@@ -58,15 +62,23 @@ class TestBookingFactsProvider {
       }
       return new DurableBookingAuditSink(new AuditRepository(createDatabase()));
     } },
+    { provide: BOOKING_OUTBOX_SINK, useFactory: () => {
+      if (!process.env.DATABASE_URL) {
+        if (process.env.NODE_ENV === 'test') return new RecordingBookingOutboxSink();
+        throw new Error('durable booking outbox is required for booking authorization');
+      }
+      const repository = new BookingRepository(createDatabase());
+      return { append: async (entry: any, tx?: any) => { if (!tx) throw new Error('booking outbox append requires transaction'); await repository.appendOutboxEvent(tx, entry); }, appendInTransaction: async (entry: any, tx: any) => repository.appendOutboxEvent(tx, entry) };
+    } },
     {
       provide: BookingServiceImpl,
-      inject: [ACTION_REQUEST_SERVICE, MANDATE_STORE, BOOKING_GRANT_STORE, BOOKING_AUDIT_SINK],
-      useFactory: (actions: ActionRequestService, mandates: { get(id: string, ownerId?: string): Promise<any> | any }, grants: TravelerDataGrantStore, audit: DurableBookingAuditSink | RecordingBookingAuditSink) => {
+      inject: [ACTION_REQUEST_SERVICE, MANDATE_STORE, BOOKING_GRANT_STORE, BOOKING_AUDIT_SINK, BOOKING_OUTBOX_SINK, TRAVELER_VAULT_REF_STORE],
+      useFactory: (actions: ActionRequestService, mandates: { get(id: string, ownerId?: string): Promise<any> | any }, grants: TravelerDataGrantStore, audit: DurableBookingAuditSink | RecordingBookingAuditSink, outbox: any, travelerRefs: TravelerVaultRefStore) => {
         if (process.env.NODE_ENV !== 'test' && !process.env.DATABASE_URL) throw new Error('durable PostgreSQL booking repository and grant provider are required for booking execution');
         const store = process.env.DATABASE_URL ? new BookingRepository(createDatabase()) : new InMemoryBookingStore();
-        const transaction = store instanceof BookingRepository ? <T>(callback: () => Promise<T>) => store.transaction(async () => callback()) : async <T>(callback: () => Promise<T>) => callback();
-        const authorization = new GovernedBookingAuthorization(actions, mandates, new TestBookingFactsProvider(), grants, undefined, { audit, requireDurable: process.env.NODE_ENV !== 'test', transaction, metrics: travelMetrics });
-        return new BookingServiceImpl(store as any, new MockOrderService(), undefined, authorization, new RedirectTokenServiceImpl(process.env.REDIRECT_TOKEN_KEY ?? 'test-booking-key'), travelMetrics);
+        const transaction = store instanceof BookingRepository ? <T>(callback: (tx?: unknown) => Promise<T>) => store.transaction(async tx => callback(tx)) : async <T>(callback: (tx?: unknown) => Promise<T>) => callback();
+        const authorization = new GovernedBookingAuthorization(actions, mandates, new TestBookingFactsProvider(), grants, undefined, { audit, outbox, requireDurable: process.env.NODE_ENV !== 'test', policyStateIsAtomic: false, transaction, metrics: travelMetrics });
+        return new BookingServiceImpl(store as any, new MockOrderService(), undefined, authorization, new RedirectTokenServiceImpl(process.env.REDIRECT_TOKEN_KEY ?? 'test-booking-key'), travelMetrics, travelerRefs);
       },
     },
   ],

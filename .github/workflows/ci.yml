@@ -18,14 +18,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with: { version: 9.15.5 }
+        with: { version: 11.19.0 }
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: pnpm }
+        with: { node-version: 24, cache: pnpm }
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @travel/web exec playwright install --with-deps chromium
       - run: pnpm typecheck
       - run: pnpm lint
-      - run: pnpm test
       - run: pnpm db:migrate
+      - run: pnpm test
       - run: pnpm test:integration
       - run: pnpm test:e2e
       - run: pnpm test:full-flow

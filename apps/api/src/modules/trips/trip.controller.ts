@@ -45,7 +45,7 @@ export class TripController {
     }
     if (!idempotencyKey) throw new ApplicationError('validation_error', 'idempotency-key header is required');
     const trip = await this.tripService.create(actorId(actor), body, { totalBudgetCents: body.totalBudgetCents ?? 0, idempotencyKey });
-    if (process.env.NODE_ENV === 'test' && this.budgetService.initialize) this.budgetService.initialize(trip.id, body.totalBudgetCents ?? 0);
+    if (this.budgetService.initialize) this.budgetService.initialize(trip.id, body.totalBudgetCents ?? 0);
     return trip;
   }
 

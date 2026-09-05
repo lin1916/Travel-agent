@@ -2,7 +2,8 @@
   "name": "@travel/api",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "node --env-file=../../.env --import tsx --watch src/main.ts",
+    "smoke:conversation-first": "node --env-file=../../.env scripts/conversation-first-live-smoke.mjs",
     "prebuild": "pnpm --filter @travel/observability build && pnpm --filter @travel/security build && pnpm --filter @travel/agent-runtime build && pnpm --filter @travel/application build",
     "build": "tsc -p tsconfig.json",
     "pretypecheck": "pnpm --filter @travel/observability build && pnpm --filter @travel/security build && pnpm --filter @travel/application build",
@@ -35,6 +36,7 @@
     "@types/node": "^22.15.3",
     "@types/supertest": "^6.0.3",
     "supertest": "^7.1.1",
+    "kysely": "^0.28.2",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
     "vitest": "^3.1.1",

@@ -1,21 +1,12 @@
 import { Module } from '@nestjs/common';
-import { ActionRequestService, SearchService, evaluateExecutionPolicy } from '@travel/application';
-import { CapabilityGateway } from '@travel/capability-gateway';
+import { ActionRequestService, evaluateExecutionPolicy } from '@travel/application';
 import type { TravelMandate } from '@travel/contracts';
 import type { ActionRequestInput, PolicySnapshot } from '@travel/contracts';
-import { PlanningOrchestrator, RuleBasedProvider, createPlanningTools } from '@travel/agent-runtime';
-import { AgentRunRepository, BudgetRepository, createDatabase } from '@travel/persistence';
-import { SearchModule } from '../search/search.module.js';
-import { TripModule } from '../trips/trip.module.js';
-import { SEARCH_SERVICE } from '../search/search.tokens.js';
+import { BudgetRepository, createDatabase } from '@travel/persistence';
+import { ConversationModule } from '../conversations/conversation.module.js';
+import { AnonymousSessionModule } from '../sessions/anonymous-session.module.js';
 import { AgentController } from './agent.controller.js';
-import { AGENT_ORCHESTRATOR } from './agent.tokens.js';
-import { TRIP_SERVICE } from '../trips/trip.providers.js';
-import { MANDATE_STORE } from '../mandates/mandate.tokens.js';
-import { ACTION_REQUEST_SERVICE } from '../action-requests/action-request.tokens.js';
-import { MandateModule } from '../mandates/mandate.module.js';
-import { ActionRequestModule } from '../action-requests/action-request.module.js';
-import { travelMetrics } from '@travel/observability';
+import { PlanningRuntimeModule } from './planning-runtime.module.js';
 
 export interface ExecutionPolicyFacts { snapshotFor(command: ActionRequestInput): Promise<PolicySnapshot | null> }
 const approvedFields: Array<keyof ActionRequestInput> = ['tripId', 'resourceId', 'kind', 'risk', 'requestedAmount', 'supplierId', 'bookingType', 'refundable', 'offerSnapshotHash', 'requestedSensitiveFields'];
@@ -56,22 +47,8 @@ export function createExecutionPolicyEvaluator(mandates: { get(id: string, owner
 }
 
 @Module({
-  imports: [SearchModule, TripModule, MandateModule, ActionRequestModule],
+  imports: [AnonymousSessionModule, PlanningRuntimeModule, ConversationModule],
   controllers: [AgentController],
-  providers: [
-    {
-      provide: AGENT_ORCHESTRATOR,
-      inject: [SEARCH_SERVICE, TRIP_SERVICE, MANDATE_STORE, ACTION_REQUEST_SERVICE],
-      useFactory: (searchService: SearchService, tripService: { getAny(id: string): Promise<{ id: string; version: number; ownerId: string } | null> }, mandateStore: any, actionRequests: ActionRequestService) => {
-        if (!process.env.DATABASE_URL && process.env.NODE_ENV !== 'test') throw new Error('DATABASE_URL is required for durable agent runs');
-        const db = process.env.DATABASE_URL ? createDatabase() : undefined;
-        const persistence = db ? new AgentRunRepository(db) : undefined;
-        const facts: ExecutionPolicyFacts = db ? createExecutionPolicyFacts(db, tripService) : { snapshotFor: async () => null };
-        const executionPolicy = createExecutionPolicyEvaluator(mandateStore, actionRequests, facts);
-        return new PlanningOrchestrator(new RuleBasedProvider(), new CapabilityGateway(createPlanningTools(searchService), undefined, executionPolicy), persistence, tripService, travelMetrics);
-      },
-    },
-  ],
-  exports: [AGENT_ORCHESTRATOR],
+  exports: [PlanningRuntimeModule],
 })
 export class AgentModule {}

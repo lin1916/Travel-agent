@@ -52,7 +52,10 @@ const policySnapshot = {
   currentOfferSnapshotHash: 'offer-v1', now: '2026-09-10T07:00:00.000+08:00',
 };
 
-async function governedAuthorization(options: { overlap?: boolean; budgetLimit?: number; grantAllowed?: boolean; approvedAmountCents?: number | null } = {}) {
+async function governedAuthorization(
+  options: { overlap?: boolean; budgetLimit?: number; grantAllowed?: boolean; approvedAmountCents?: number | null } = {},
+  sinks: { audit?: any; outbox?: any } = {},
+) {
   const actions = new ActionRequestService(() => new Date('2026-09-10T07:00:00.000+08:00'));
   const mandates = new MandateStore();
   const mandate = mandates.create('actor-1', {
@@ -75,11 +78,36 @@ async function governedAuthorization(options: { overlap?: boolean; budgetLimit?:
       if (options.grantAllowed === false || ref.id !== 'grant-1' || context.authorizationRef !== approved.id || context.intentId !== 'intent-1') throw new Error('grant is not authorized');
       grantConsumes += 1;
     },
-  }, () => new Date('2026-09-10T07:00:00.000+08:00'));
+  }, () => new Date('2026-09-10T07:00:00.000+08:00'), { audit: sinks.audit, outbox: sinks.outbox });
   return { actions, mandate, approved, authorization, grantConsumes: () => grantConsumes };
 }
 
 describe('booking service', () => {
+  it('rejects booking intents whose traveler references are not owned durable references', async () => {
+    const service = new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService(), undefined, auth, undefined, undefined, {
+      ownsFields: async () => false,
+    });
+    await expect(create(service)).rejects.toBeInstanceOf(Error);
+  });
+  it('passes request and correlation IDs to the booking outbox sink', async () => {
+    const outboxEntries: any[] = [];
+    const governed = await governedAuthorization({}, { outbox: { append: async (entry: any) => outboxEntries.push(entry) } });
+    const service = new BookingServiceImpl(new InMemoryBookingStore(), new MockOrderService({ outcome: 'pending', snapshotHash: 'offer-v1' }), undefined, governed.authorization);
+    await create(service);
+
+    await service.commit('actor-1', {
+      intentId: 'intent-1',
+      expectedVersion: 1,
+      actionRequestId: governed.approved.id,
+      mandateId: governed.mandate.id,
+      idempotencyKey: 'outbox-ids',
+      selectedOfferSnapshotHash: 'offer-v1',
+      requestId: 'request-1',
+      correlationId: 'correlation-1',
+    });
+    expect(outboxEntries[0]).toMatchObject({ requestId: 'request-1', correlationId: 'correlation-1' });
+  });
+
   it('fails closed for production authorization without durable audit transaction', () => {
     const previous = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
@@ -88,6 +116,54 @@ describe('booking service', () => {
       const mandates = new MandateStore();
       expect(() => new GovernedBookingAuthorization(actions, mandates, { snapshotFor: async () => null }, { findById: async () => null, consumeOnce: async () => undefined }))
         .toThrow(/durable audit/i);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
+  it('fails closed for production authorization without a durable outbox', () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const actions = new ActionRequestService();
+      const mandates = new MandateStore();
+      expect(() => new GovernedBookingAuthorization(
+        actions,
+        mandates,
+        { snapshotFor: async () => null },
+        { findById: async () => null, consumeOnce: async () => undefined },
+        undefined,
+        { audit: { append: async () => undefined }, transaction: async callback => callback() },
+      )).toThrow(/durable audit, transaction, and outbox/i);
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
+  it('fails closed for production authorization when policy state cannot join the audit transaction', async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const actions = new ActionRequestService();
+      const mandates = new MandateStore();
+      const authorization = new GovernedBookingAuthorization(
+        actions,
+        mandates,
+        { snapshotFor: async () => null },
+        { findById: async () => null, consumeOnce: async () => undefined },
+        undefined,
+        {
+          audit: { append: async () => undefined, appendInTransaction: async () => undefined } as any,
+          outbox: { append: async () => undefined, appendInTransaction: async () => undefined } as any,
+          transaction: async callback => callback(),
+        },
+      );
+      await expect(authorization.authorize(
+        'actor-1',
+        { id: 'intent-1', tripId: 'trip-1', offerId: 'offer-1', offerKind: 'train', version: 1 } as any,
+        { actionRequestId: 'action-1', mandateId: 'mandate-1', intentId: 'intent-1', expectedVersion: 1, idempotencyKey: 'key-1', selectedOfferSnapshotHash: 'offer-v1' },
+        { snapshotHash: 'offer-v1', price: { amountCents: 100, currency: 'CNY' }, startsAt: '2026-09-10T08:00:00.000+08:00', endsAt: '2026-09-10T09:00:00.000+08:00' },
+      )).rejects.toThrow(/atomic policy state/i);
     } finally {
       process.env.NODE_ENV = previous;
     }

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { AppErrorSchema, EventEnvelopeSchema, MoneySchema, createAppError, toPublicError, SupplierWebhookSchema, RevalidateRequestSchema, CreateSupplierOrderSchema, SupplierOrderSnapshotSchema, SupplierOfferSchema, TravelMandateSchema, ActionRequestInputSchema, CancelRequestSchema, RefundRequestSchema, PolicySnapshotSchema, CreateOrderResponseSchema, SupplierOrderRefSchema, SupplierOrderUpdateSchema, CancelSupplierOrderSchema, CancelResultSchema } from '../src/index.js';
+import { AppErrorSchema, EventEnvelopeSchema, MoneySchema, PlanningContextPatchSchema, createAppError, toPublicError, SupplierWebhookSchema, RevalidateRequestSchema, CreateSupplierOrderSchema, SupplierOrderSnapshotSchema, SupplierOfferSchema, TravelMandateSchema, ActionRequestInputSchema, CancelRequestSchema, RefundRequestSchema, PolicySnapshotSchema, CreateOrderResponseSchema, SupplierOrderRefSchema, SupplierOrderUpdateSchema, CancelSupplierOrderSchema, CancelResultSchema } from '../src/index.js';
 
 describe('shared contract schemas', () => {
+  it('accepts PlanningContext timestamps only in China Standard Time', () => {
+    expect(PlanningContextPatchSchema.safeParse({ startsAt: '2026-10-01T00:00:00+08:00', endsAt: '2026-10-04T00:00:00+08:00' }).success).toBe(true);
+    expect(PlanningContextPatchSchema.safeParse({ startsAt: '2026-10-01T00:00:00Z' }).success).toBe(false);
+    expect(PlanningContextPatchSchema.safeParse({ endsAt: '2026-10-04T00:00:00+09:00' }).success).toBe(false);
+  });
+
   it('accepts only non-negative CNY integer cents', () => {
     expect(MoneySchema.parse({ amountCents: 1234, currency: 'CNY' })).toEqual({ amountCents: 1234, currency: 'CNY' });
     expect(MoneySchema.safeParse({ amountCents: -1, currency: 'CNY' }).success).toBe(false);
@@ -24,10 +30,15 @@ describe('shared contract schemas', () => {
     expect(toPublicError(error).publicMessage).not.toContain('abc');
   });
 
+  it('redacts sensitive correlation IDs from public errors', () => {
+    const error = createAppError('validation_error', '13800138000', 'caller supplied sensitive id');
+    expect(toPublicError(error).correlationId).toBe('[REDACTED_ID]');
+  });
+
   it('maps every public error code to its stable HTTP semantics', () => {
     const expected = {
       validation_error: [400, false], unauthorized: [401, false], forbidden: [403, false],
-      conflict: [409, false], policy_blocked: [422, false], supplier_unavailable: [503, true],
+      conflict: [409, false], gone: [410, false], policy_blocked: [422, false], supplier_unavailable: [503, true],
       unknown_external_result: [202, false],
     } as const;
     for (const [code, [status, retryable]] of Object.entries(expected)) {

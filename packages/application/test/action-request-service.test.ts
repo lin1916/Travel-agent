@@ -2,6 +2,27 @@ import { describe, expect, it } from 'vitest';
 import { ActionRequestService } from '../src/action-requests/action-request-service.js';
 
 describe('action request service', () => {
+  it('returns the server-issued request id on create and get', async () => {
+    const service = new ActionRequestService();
+    const created = await service.create('owner-1', { tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit' }, { requestId: 'request-1', correlationId: 'correlation-1' });
+    expect(created.requestId).toBe('request-1');
+    await expect(service.get(created.id, 'owner-1')).resolves.toMatchObject({ requestId: 'request-1' });
+  });
+
+  it('preserves both request and correlation IDs on the durable action record', async () => {
+    const service = new ActionRequestService();
+    const created = await service.create(
+      'owner-1',
+      { tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit' },
+      { requestId: 'request-1', correlationId: 'correlation-1' } as any,
+    );
+
+    await expect(service.getRecord(created.id, 'owner-1')).resolves.toMatchObject({
+      requestId: 'request-1',
+      correlationId: 'correlation-1',
+    });
+  });
+
   it('creates pending requests and consumes an approval once', async () => {
     const service = new ActionRequestService();
     const created = await service.create('owner-1', { tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit', requestedAmount: { amountCents: 100, currency: 'CNY' } }, { correlationId: 'corr-1' });

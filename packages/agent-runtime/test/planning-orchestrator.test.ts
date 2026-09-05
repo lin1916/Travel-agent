@@ -22,6 +22,29 @@ const makeGateway = () => {
 };
 
 describe('PlanningOrchestrator', () => {
+  it('preserves request and correlation IDs through the run and provider context', async () => {
+    const { gateway } = makeGateway();
+    let seenContext: import('@travel/contracts').AgentContext | undefined;
+    const provider = {
+      generatePlan: async (input: import('@travel/contracts').AgentContext) => {
+        seenContext = input;
+        return { assistantMessage: 'ok', missingFields: [], toolCalls: [], actionRequests: [] };
+      },
+    };
+    const orchestrator = new PlanningOrchestrator(provider, gateway);
+
+    const run = await orchestrator.start({
+      tripId: 'trip-1',
+      userMessage: 'Plan Hangzhou',
+      actorId: 'actor-1',
+      requestId: 'request-1',
+      correlationId: 'correlation-1',
+    } as any);
+
+    expect(run).toMatchObject({ requestId: 'request-1', correlationId: 'correlation-1' });
+    expect(seenContext).toMatchObject({ requestId: 'request-1', correlationId: 'correlation-1' });
+  });
+
   it('preserves request correlation and records workflow metrics', async () => {
     const { gateway } = makeGateway();
     const observed: Array<{ name: string; value?: number }> = [];
@@ -53,9 +76,8 @@ describe('PlanningOrchestrator', () => {
     const run = await orchestrator.start({ tripId: 'trip-1', userMessage: 'Plan Hangzhou from 2026-09-01 to 2026-09-03 for 2 travelers', actorId: 'actor-1' });
     expect(calls).toEqual(expect.arrayContaining(['train', 'stay', 'attraction', 'dining']));
     expect(run.toolCalls).toHaveLength(4);
-    expect(run.assistantMessage).toContain('mock-supplier');
-    expect(run.assistantMessage).toContain('2026-08-30T00:00:00.000Z');
-    expect(run.assistantMessage).toContain('risk=read');
+    expect(run.assistantMessage).toBe('Found planning results for 4 categories.');
+    expect(run.assistantMessage).not.toContain('source=');
     expect((run as unknown as { chainOfThought?: unknown }).chainOfThought).toBeUndefined();
   });
 
@@ -65,13 +87,13 @@ describe('PlanningOrchestrator', () => {
     const complete = await orchestrator.start({ tripId: 'trip-1', userMessage: 'Plan Hangzhou from 2026-09-01 to 2026-09-03 for 2 travelers', actorId: 'actor-1' });
     const callInput = complete.toolCallSummaries[0]?.inputSummary;
     expect(callInput).toEqual({ kind: 'train' });
-    const providerOutput = await new RuleBasedProvider().generatePlan({ tripId: 'trip-1', agentRunId: 'run-1', userMessage: 'Plan Hangzhou from 2026-09-01 to 2026-09-03 for 2 travelers', currentTripVersion: 1, redactedOffers: [] });
+    const providerOutput = await new RuleBasedProvider().generatePlan({ tripId: 'trip-1', agentRunId: 'run-1', userMessage: 'Plan Hangzhou from 2026-09-01 to 2026-09-03 for 2 travelers', currentTripVersion: 1, redactedOffers: [], messages: [], toolResults: [] });
     expect((providerOutput.toolCalls[0]?.input as { startsAt: string }).startsAt).toBe('2026-09-01T00:00:00.000+08:00');
     const tooMany = await orchestrator.start({ tripId: 'trip-1', userMessage: 'Plan Hangzhou from 2026-09-01 to 2026-09-03 for 7 travelers', actorId: 'actor-1' });
-    expect(tooMany.missingFields).toEqual(['travelers']);
+    expect(tooMany.missingFields).toEqual(['travelerCount']);
     expect(tooMany.toolCallSummaries).toHaveLength(0);
     const tooManyChinese = await orchestrator.start({ tripId: 'trip-1', userMessage: 'Plan Hangzhou from 2026-09-01 to 2026-09-03 for 7人', actorId: 'actor-1' });
-    expect(tooManyChinese.missingFields).toEqual(['travelers']);
+    expect(tooManyChinese.missingFields).toEqual(['travelerCount']);
     expect(tooManyChinese.toolCallSummaries).toHaveLength(0);
   });
 

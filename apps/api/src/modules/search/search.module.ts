@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import type { Kysely } from 'kysely';
 import { InMemorySearchTaskQueue, SearchService } from '@travel/application';
-import { createDatabase, TaskRepository } from '@travel/persistence';
+import { TaskRepository, type Database } from '@travel/persistence';
 import { MockAttractionAdapter, MockDiningAdapter, MockStayAdapter, MockTransportAdapter } from '@travel/supplier-adapters';
+import { DatabaseModule, API_DATABASE } from '../../database.module.js';
 import { TripModule } from '../trips/trip.module.js';
 import { SearchController } from './search.controller.js';
 import { SEARCH_SERVICE } from './search.tokens.js';
@@ -9,15 +11,13 @@ import { SEARCH_SERVICE } from './search.tokens.js';
 export const SEARCH_TASK_QUEUE = Symbol('SEARCH_TASK_QUEUE');
 
 @Module({
-  imports: [TripModule],
+  imports: [DatabaseModule, TripModule],
   controllers: [SearchController],
   providers: [
     {
       provide: SEARCH_TASK_QUEUE,
-      useFactory: () => {
-        if (!process.env.DATABASE_URL && process.env.NODE_ENV === 'test') return new InMemorySearchTaskQueue();
-        return new TaskRepository(createDatabase());
-      },
+      inject: [API_DATABASE],
+      useFactory: (db: Kysely<Database> | undefined) => db ? new TaskRepository(db) : new InMemorySearchTaskQueue(),
     },
     {
       provide: SEARCH_SERVICE,

@@ -1,5 +1,13 @@
 import type {
+  CandidatePlace,
+  Conversation,
+  ConversationMessage,
   EventEnvelope,
+  Place,
+  PlanProposal,
+  PlanningContext,
+  PlanVersion,
+  RoutePlan,
   TaskKind,
   TaskOutcome,
   TripRecord,
@@ -133,8 +141,10 @@ export interface OffersTable {
 
 export interface AgentRunsTable {
   id: string;
-  trip_id: string;
+  conversation_id: string | null;
+  trip_id: string | null;
   actor_id: string | null;
+  request_id: string | null;
   status: string;
   user_message: string;
   assistant_message: string;
@@ -142,9 +152,12 @@ export interface AgentRunsTable {
   tool_calls_json: string;
   tool_call_summaries_json: string;
   action_requests_json: string;
+  planning_context_json: string | null;
+  reasoning_summary: string | null;
+  plan_proposal_json: string | null;
   next_step: string | null;
   correlation_id: string | null;
-  current_trip_version: number;
+  current_trip_version: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -161,11 +174,22 @@ export interface TravelerVaultRefsTable {
 }
 
 export interface MandatesTable { id: string; version: number; trip_id: string; owner_id: string; payload_json: string; policy_hash: string; actor_id: string; created_at: string; valid_until: string; revoked_at: string | null }
-export interface ActionRequestsTable { id: string; trip_id: string; owner_id: string; version: number; status: string; payload_json: string; request_hash: string; policy_snapshot_json: string | null; decision_actor_id: string | null; decision_reason: string | null; correlation_id: string; expires_at: string; consumed_at: string | null; created_at: string }
+export interface ActionRequestsTable { id: string; trip_id: string; owner_id: string; version: number; status: string; payload_json: string; request_hash: string; policy_snapshot_json: string | null; decision_actor_id: string | null; decision_reason: string | null; request_id: string | null; correlation_id: string; expires_at: string; consumed_at: string | null; created_at: string }
 export interface BookingIntentsTable { id: string; trip_id: string; owner_id: string; offer_id: string; offer_kind: string; status: string; version: number; payload_json: string; created_at: string; updated_at: string }
 export interface SupplierOrdersTable { id: string; intent_id: string; supplier_id: string; lifecycle_status: string; reconciliation_status: string; payload_json: string; external_idempotency_key: string; payment_location: Generated<string>; ticket_or_reservation_ref: Generated<string | null>; refund_rules: Generated<string>; required_user_action: Generated<string | null>; last_updated_at: Generated<string>; created_at: string }
 export interface WebhookReceiptsTable { supplier_id: string; external_event_id: string; order_id: string; payload_hash: string; task_id: string; received_at: string }
 export interface AuditEntriesTable { id: string; trip_id: string | null; actor_id: string; action: string; resource: string; supplier_id: string | null; allowed_fields_json: string | null; policy_result: string; reason: string | null; mandate_version: number | null; grant_ref: string | null; request_id: string; correlation_id: string; occurred_at: string; created_at: string }
+export interface AnonymousSessionsTable { id: string; expires_at: string; created_at: string; updated_at: string }
+export interface AgentConversationsTable { id: string; session_id: string; provider_name: string; model: string; status: Conversation['status']; trip_id: string | null; agent_run_id: string | null; created_at: string; updated_at: string; expires_at: string }
+export interface AgentMessagesTable { id: string; conversation_id: string; sequence: number; role: ConversationMessage['role']; content: string; client_message_id: string | null; created_at: string }
+export interface PlanningContextsTable { conversation_id: string; session_id: string; version: number; destination: string | null; origin: string | null; starts_at: string | null; ends_at: string | null; traveler_count: number | null; total_budget_cents: number | null; preferences_json: string; assumptions_json: string; missing_fields_json: string; updated_at: string }
+export interface CandidatePlacesTable { id: string; conversation_id: string; place_json: string; provider: Place['provider']; provider_place_id: string; source: CandidatePlace['source']; note: string | null; priority: number | null; created_at: string }
+export interface PlanProposalsTable { id: string; conversation_id: string; trip_id: string; planning_context_version: number; proposed_places_json: string; itinerary_json: string; budget_summary_json: string; warnings_json: string; reasoning_summary: string | null; status: PlanProposal['status']; version: number; accepted_place_ids_json: string; created_at: string; expires_at: string }
+export interface ProposalIdempotencyKeysTable { conversation_id: string; proposal_id: string; idempotency_key: string; request_hash: string; response_json: string; created_at: string }
+export interface PlanVersionsTable { id: string; trip_id: string; owner_id: string; version: number; created_at: string; items_json: string; warnings_json: string; budget_json: string }
+export interface PlanChangeSetsTable { plan_version_id: string; command: string; summary: string; changed_item_ids_json: string }
+export interface PlacesTable { id: string; trip_id: string; owner_id: string; name: string; category: string; address: string; city: string; latitude: number; longitude: number; provider_place_id: string; source_updated_at: string }
+export interface RoutePlansTable { id: string; trip_id: string; owner_id: string; origin_place_id: string; destination_place_id: string; mode: RoutePlan['mode']; status: RoutePlan['status']; origin_json: string; destination_json: string; distance_meters: number | null; duration_minutes: number | null; polyline: string | null; estimated_cost_cents: number | null; reason: string | null; updated_at: string }
 
 export interface Database {
   trips: TripsTable;
@@ -187,6 +211,17 @@ export interface Database {
   supplier_orders: SupplierOrdersTable;
   webhook_receipts: WebhookReceiptsTable;
   audit_entries: AuditEntriesTable;
+  anonymous_sessions: AnonymousSessionsTable;
+  agent_conversations: AgentConversationsTable;
+  agent_messages: AgentMessagesTable;
+  planning_contexts: PlanningContextsTable;
+  candidate_places: CandidatePlacesTable;
+  plan_proposals: PlanProposalsTable;
+  proposal_idempotency_keys: ProposalIdempotencyKeysTable;
+  plan_versions: PlanVersionsTable;
+  plan_change_sets: PlanChangeSetsTable;
+  places: PlacesTable;
+  route_plans: RoutePlansTable;
 }
 
 export type TripRow = Selectable<TripsTable>;

@@ -16,14 +16,14 @@ export class PolicyChecker {
     if ((tool.risk === 'commit' || tool.risk === 'redirect') && !context.actorAuthenticated) {
       return { allowed: false, reason: 'an authenticated actor is required for external side effects' };
     }
-    if (context.tripOwnerId && context.actorId !== context.tripOwnerId) {
+    if (context.tripId && context.tripOwnerId && context.actorId !== context.tripOwnerId) {
       return { allowed: false, reason: 'actor does not own the trip' };
     }
-    if (context.expectedTripVersion !== undefined && context.currentTripVersion === undefined) {
+    if (context.tripId && context.expectedTripVersion !== undefined && context.currentTripVersion === undefined) {
       return { allowed: false, reason: 'current trip version is required' };
     }
     if (
-      context.currentTripVersion !== undefined &&
+      context.tripId && context.currentTripVersion !== undefined &&
       context.expectedTripVersion !== undefined &&
       context.currentTripVersion !== context.expectedTripVersion
     ) {

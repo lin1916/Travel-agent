@@ -8,6 +8,8 @@ export interface AcceptWebhookInput {
   payloadHash: string;
   taskId: string;
   taskPayload: Record<string, unknown>;
+  requestId?: string;
+  correlationId?: string;
 }
 
 export class WebhookRepository {
@@ -33,7 +35,7 @@ export class WebhookRepository {
       }).onConflict(oc => oc.columns(['supplier_id', 'external_event_id']).doNothing()).returning('external_event_id').executeTakeFirst();
       if (!receipt) return false;
 
-      const payloadJson = canonicalRequestJson({ ...input.taskPayload, orderId: localOrderId });
+      const payloadJson = canonicalRequestJson({ ...input.taskPayload, orderId: localOrderId, ...(input.requestId ? { requestId: input.requestId } : {}), ...(input.correlationId ? { correlationId: input.correlationId } : {}) });
       const now = new Date().toISOString();
       await tx.insertInto('tasks').values({
         id: input.taskId,

@@ -12,9 +12,12 @@ import { up as upWebhooksReconciliation } from '../../migrations/010_webhooks_re
 import { up as upInboxDeliveryClaims } from '../../migrations/011_inbox_delivery_claims.js';
 import { up as upAfterSales } from '../../migrations/012_after_sales.js';
 import { up as upAudit } from '../../migrations/013_audit.js';
+import { up as upRequestCorrelationIds } from '../../migrations/014_request_correlation_ids.js';
+import { down as downPlanningWorkspace, up as upPlanningWorkspace } from './015_planning_workspace.js';
+import { down as downConversationFirstPlanning, up as upConversationFirstPlanning } from './016_conversation_first_planning.js';
 import type { Database } from '../types.js';
 
-type Migration = { name: string; up: (db: Kysely<Database>) => Promise<void> };
+type Migration = { name: string; up: (db: Kysely<Database>) => Promise<void>; down?: (db: Kysely<Database>) => Promise<void> };
 
 export const migrations: Migration[] = [
   { name: '001_core', up: upCore },
@@ -30,6 +33,9 @@ export const migrations: Migration[] = [
   { name: '011_inbox_delivery_claims', up: upInboxDeliveryClaims },
   { name: '012_after_sales', up: upAfterSales },
   { name: '013_audit', up: upAudit },
+  { name: '014_request_correlation_ids', up: upRequestCorrelationIds },
+  { name: '015_planning_workspace', up: upPlanningWorkspace, down: downPlanningWorkspace },
+  { name: '016_conversation_first_planning', up: upConversationFirstPlanning, down: downConversationFirstPlanning },
 ];
 
 export async function migrateToLatest(db: Kysely<Database>): Promise<void> {

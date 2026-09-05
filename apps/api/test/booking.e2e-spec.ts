@@ -13,7 +13,7 @@ type MandateStore = { create(ownerId: string, input: any): any };
 
 describe('booking API boundaries', () => {
   let app: INestApplication;
-  beforeAll(async () => { process.env.NODE_ENV = 'test'; const module = await Test.createTestingModule({ imports: [AppModule] }).compile(); app = module.createNestApplication(new FastifyAdapter()); app.useGlobalFilters(new ApplicationErrorFilter()); await app.init(); await app.getHttpAdapter().getInstance().ready(); });
+  beforeAll(async () => { process.env.NODE_ENV = 'test'; process.env.TRAVEL_AGENT_TEST_PROVIDER = 'rule'; const module = await Test.createTestingModule({ imports: [AppModule] }).compile(); app = module.createNestApplication(new FastifyAdapter()); app.useGlobalFilters(new ApplicationErrorFilter()); await app.init(); await app.getHttpAdapter().getInstance().ready(); });
   afterAll(async () => app.close());
 
   async function authorize(intentId: string, offerId: string, grantId = 'g-1', actionId = `action-${intentId}-${Date.now()}`, tripId = `trip-${intentId}`, intentVersion = 1) {
@@ -37,7 +37,7 @@ describe('booking API boundaries', () => {
   });
 
   it('requires authorization and exposes order status', async () => {
-    const created = await request(app.getHttpServer()).post('/v1/trips/trip-i-2/booking-intents').set('x-actor-id', 'actor-1').send({ id: 'i-2', offerId: 'o-2', offerKind: 'train', supplierId: 'mock-train', selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', travelerDataGrantId: 'g-1', refundable: true, startsAt: '2026-09-10T08:00:00.000+08:00', endsAt: '2026-09-10T10:00:00.000+08:00', travelerIds: ['traveler-1'], requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing' });
+    const created = await request(app.getHttpServer()).post('/v1/trips/trip-i-2/booking-intents').set('x-actor-id', 'actor-1').send({ id: 'i-2', offerId: 'o-2', offerKind: 'train', supplierId: 'mock-train', selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', travelerDataGrantId: 'g-1', refundable: true, startsAt: '2026-09-10T08:00:00.000+08:00', endsAt: '2026-09-10T10:00:00.000+08:00', requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing' });
     expect(created.status).toBe(201);
     const authorized = await authorize('i-2', 'o-2');
     const denied = await request(app.getHttpServer()).post('/v1/booking-intents/i-2/commit').set('x-actor-id', 'actor-1').send({ expectedVersion: 1, idempotencyKey: 'k-1', selectedOfferSnapshotHash: 'offer-v1' });
@@ -59,7 +59,7 @@ describe('booking API boundaries', () => {
   });
 
   it('maps a supplier rejection to failed without reporting success', async () => {
-    const created = await request(app.getHttpServer()).post('/v1/trips/trip-rejected/booking-intents').set('x-actor-id', 'actor-1').send({ id: 'i-rejected', offerId: 'o-rejected', offerKind: 'train', supplierId: 'mock-train', selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', travelerDataGrantId: 'g-rejected', refundable: true, travelerIds: ['traveler-1'], requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing' });
+    const created = await request(app.getHttpServer()).post('/v1/trips/trip-rejected/booking-intents').set('x-actor-id', 'actor-1').send({ id: 'i-rejected', offerId: 'o-rejected', offerKind: 'train', supplierId: 'mock-train', selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', travelerDataGrantId: 'g-rejected', refundable: true, requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing' });
     expect(created.status).toBe(201);
     const auth = await authorize('i-rejected', 'o-rejected', 'g-rejected', undefined, 'trip-rejected');
     (app.get(BookingServiceImpl) as any).orders.setOutcome('rejected');
@@ -71,7 +71,7 @@ describe('booking API boundaries', () => {
   });
 
   it('returns 202 and preserves unknown supplier creation without false success', async () => {
-    const created = await request(app.getHttpServer()).post('/v1/trips/trip-unknown/booking-intents').set('x-actor-id', 'actor-1').send({ id: 'i-unknown', offerId: 'o-unknown', offerKind: 'train', supplierId: 'mock-train', selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', travelerDataGrantId: 'g-unknown', refundable: true, travelerIds: ['traveler-1'], requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing' });
+    const created = await request(app.getHttpServer()).post('/v1/trips/trip-unknown/booking-intents').set('x-actor-id', 'actor-1').send({ id: 'i-unknown', offerId: 'o-unknown', offerKind: 'train', supplierId: 'mock-train', selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', travelerDataGrantId: 'g-unknown', refundable: true, requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing' });
     expect(created.status).toBe(201);
     const auth = await authorize('i-unknown', 'o-unknown', 'g-unknown', undefined, 'trip-unknown');
     (app.get(BookingServiceImpl) as any).orders.setOutcome('indeterminate');
@@ -82,7 +82,7 @@ describe('booking API boundaries', () => {
   });
 
   it('pauses on changed revalidation and resumes only with a fresh bound decision', async () => {
-    const created = await request(app.getHttpServer()).post('/v1/trips/trip-resume/booking-intents').set('x-actor-id', 'actor-1').send({ id: 'i-resume', offerId: 'o-resume', offerKind: 'train', supplierId: 'mock-train', selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', travelerDataGrantId: 'g-resume', refundable: true, travelerIds: ['traveler-1'], requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing' });
+    const created = await request(app.getHttpServer()).post('/v1/trips/trip-resume/booking-intents').set('x-actor-id', 'actor-1').send({ id: 'i-resume', offerId: 'o-resume', offerKind: 'train', supplierId: 'mock-train', selectedOfferSnapshotHash: 'offer-v1', originalPriceCents: 1000, refundRulesHash: 'rules-v1', travelerDataGrantId: 'g-resume', refundable: true, requestedSensitiveFields: ['fullName'], travelerDataPurpose: 'ticketing' });
     expect(created.status).toBe(201);
     const auth = await authorize('i-resume', 'o-resume', 'g-resume', undefined, 'trip-resume');
     const orders = (app.get(BookingServiceImpl) as any).orders;

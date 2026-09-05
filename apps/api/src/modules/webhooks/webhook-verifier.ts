@@ -7,6 +7,7 @@ export interface VerifiedWebhook {
   externalEventId: string;
   orderRef: SupplierOrderRef;
   payload: unknown;
+  timestampSeconds: number;
 }
 
 export interface WebhookVerifier {
@@ -67,6 +68,6 @@ export class HmacWebhookVerifier implements WebhookVerifier {
     if (!parsedOrderRef.success || parsedOrderRef.data.supplierId !== supplierId) {
       throw new BadRequestException('invalid webhook order reference');
     }
-    return { supplierId, externalEventId, orderRef: parsedOrderRef.data, payload };
+    return { supplierId, externalEventId, orderRef: parsedOrderRef.data, payload, timestampSeconds };
   }
 }

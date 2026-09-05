@@ -14,6 +14,8 @@ describe('agent planning API', () => {
   let ownerTripId: string;
 
   beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.TRAVEL_AGENT_TEST_PROVIDER = 'rule';
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication(new FastifyAdapter());
     app.useGlobalFilters(new ApplicationErrorFilter());

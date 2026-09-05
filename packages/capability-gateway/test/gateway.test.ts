@@ -44,6 +44,32 @@ describe('CapabilityGateway', () => {
     expect(received).toMatchObject({ actorId: 'actor-1', tripId: 'trip-1', agentRunId: 'run-1', correlationId: 'corr-1' });
   });
 
+  it('allows a Conversation-only context for a pre-Trip capability', async () => {
+    const conversationContext: CapabilityContext = {
+      actorId: 'session-1', conversationId: 'conversation-1', agentRunId: 'run-1', correlationId: 'corr-1', requestedRisk: 'prepare',
+    };
+    const tool: CapabilityTool<{ query: string }, string> = {
+      name: 'search_places', risk: 'read', inputSchema: z.object({ query: z.string() }), execute: async () => 'ok',
+    };
+    await expect(new CapabilityGateway([tool]).execute(tool.name, conversationContext, { query: '西湖' })).resolves.toBe('ok');
+  });
+
+  it('requires at least a Conversation or Trip identifier', async () => {
+    const tool: CapabilityTool<Record<string, never>, string> = {
+      name: 'context-required', risk: 'read', inputSchema: z.object({}), execute: async () => 'ok',
+    };
+    const invalid = { actorId: 'actor-1', agentRunId: 'run-1', correlationId: 'corr-1' } as CapabilityContext;
+    await expect(new CapabilityGateway([tool]).execute(tool.name, invalid, {})).rejects.toMatchObject({ code: 'validation_error' });
+  });
+
+  it('blocks Trip input when a Conversation-only context has no matching Trip', async () => {
+    const tool: CapabilityTool<{ tripId: string }, string> = {
+      name: 'trip-read', risk: 'read', inputSchema: z.object({ tripId: z.string() }), execute: async () => 'ok',
+    };
+    const preTrip = { actorId: 'session-1', conversationId: 'conversation-1', agentRunId: 'run-1', correlationId: 'corr-1' } as CapabilityContext;
+    await expect(new CapabilityGateway([tool]).execute(tool.name, preTrip, { tripId: 'trip-1' })).rejects.toMatchObject({ code: 'policy_blocked' });
+  });
+
   it('treats supplier text as inert data during policy evaluation', async () => {
     const tool: CapabilityTool<{ supplierText: string }, string> = {
       name: 'supplier-read',

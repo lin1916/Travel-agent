@@ -1,9 +1,10 @@
-import { BookingRepository, InboxRepository, OfferRepository, OutboxRepository, TaskRepository, createDatabase, migrateToLatest } from '@travel/persistence';
+import { BookingRepository, ConversationRepository, InboxRepository, OfferRepository, OutboxRepository, TaskRepository, createDatabase, migrateToLatest } from '@travel/persistence';
 import { PersistentReconciliationOrderStore, ReconciliationServiceImpl, SearchService } from '@travel/application';
 import { MockAttractionAdapter, MockDiningAdapter, MockStayAdapter, MockTransportAdapter } from '@travel/supplier-adapters';
 import { TaskRunner } from './task-runner.js';
 import { createWorkerHandlers } from './worker-composition.js';
 import { createCorrelationContext, travelMetrics, createRedactedLogger } from '@travel/observability';
+import { AnonymousSessionCleanupJob } from './jobs/anonymous-session-cleanup-job.js';
 
 const logger = createRedactedLogger();
 const workerCorrelation = createCorrelationContext({ requestId: `worker-${process.pid}` });
@@ -11,6 +12,7 @@ logger.info({ name: 'worker.started', requestId: workerCorrelation.requestId, co
 
 const db = createDatabase();
 await migrateToLatest(db);
+const cleanup = new AnonymousSessionCleanupJob(new ConversationRepository(db));
 const adapters = [new MockTransportAdapter(), new MockStayAdapter(), new MockAttractionAdapter(), new MockDiningAdapter()];
 const registry = { get: (supplierId: string) => adapters.find(adapter => adapter.supplierId === supplierId) };
 const reconciliation = new ReconciliationServiceImpl(new PersistentReconciliationOrderStore(new BookingRepository(db)), registry);
@@ -33,7 +35,12 @@ const runner = new TaskRunner(new TaskRepository(db), createWorkerHandlers({
   },
 );
 
+let nextCleanupAt = 0;
 while (true) {
+  if (Date.now() >= nextCleanupAt) {
+    await cleanup.runOnce();
+    nextCleanupAt = Date.now() + Number(process.env.ANONYMOUS_SESSION_CLEANUP_INTERVAL_MS ?? 60_000);
+  }
   const startedAt = Date.now();
   const task = await runner.runOnce();
   if (task) travelMetrics.queueAge.observe(Math.max(0, Date.now() - startedAt), { kind: task.kind });

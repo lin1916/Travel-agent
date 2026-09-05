@@ -68,6 +68,7 @@ describe('authenticated traveler and grant API', () => {
 
   beforeAll(async () => {
     process.env.NODE_ENV = 'test';
+    process.env.TRAVEL_AGENT_TEST_PROVIDER = 'rule';
     process.env.DEV_IDENTITY_CODE = 'local-code';
     process.env.DEV_IDENTITY_ACTOR_ID = 'actor-dev';
     const module = await Test.createTestingModule({ imports: [AppModule] })

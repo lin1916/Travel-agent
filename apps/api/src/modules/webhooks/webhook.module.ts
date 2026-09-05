@@ -1,8 +1,9 @@
 import { Module, ServiceUnavailableException } from '@nestjs/common';
 import { createDatabase, WebhookRepository } from '@travel/persistence';
 import { MockAttractionAdapter, MockDiningAdapter, MockStayAdapter, MockTransportAdapter } from '@travel/supplier-adapters';
-import { SUPPLIER_ADAPTER_REGISTRY, WEBHOOK_INTAKE, WebhookController, type SupplierAdapterRegistry, type WebhookIntake } from './webhook.controller.js';
+import { SUPPLIER_ADAPTER_REGISTRY, WEBHOOK_INTAKE, WEBHOOK_REPLAY_GUARD, WebhookController, type SupplierAdapterRegistry, type WebhookIntake } from './webhook.controller.js';
 import { HmacWebhookVerifier, WEBHOOK_VERIFIER } from './webhook-verifier.js';
+import { ReplayGuard } from '@travel/security';
 
 function webhookSecrets(): Record<string, string> {
   const configured = process.env.SUPPLIER_WEBHOOK_SECRETS_JSON;
@@ -26,6 +27,7 @@ class UnavailableWebhookIntake implements WebhookIntake {
   controllers: [WebhookController],
   providers: [
     { provide: WEBHOOK_VERIFIER, useFactory: () => { const secrets = webhookSecrets(); return new HmacWebhookVerifier(supplierId => secrets[supplierId]); } },
+    { provide: WEBHOOK_REPLAY_GUARD, useFactory: () => new ReplayGuard() },
     { provide: WEBHOOK_INTAKE, useFactory: () => !process.env.DATABASE_URL && process.env.NODE_ENV === 'test' ? new UnavailableWebhookIntake() : new WebhookRepository(createDatabase()) },
     {
       provide: SUPPLIER_ADAPTER_REGISTRY,

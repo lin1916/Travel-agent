@@ -35,4 +35,15 @@ describe('connectSse', () => {
     expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get('last-event-id')).toBe('event-41');
     expect(received).toEqual([{ id: 'event-41', data: { status: 'updated' } }, { data: { status: 'complete' } }]);
   });
+
+  it('deduplicates replayed event ids after reconnect', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(eventStream('id: event-41\ndata: {"status":"updated"}\n\n')))
+      .mockResolvedValueOnce(new Response(eventStream('id: event-41\ndata: {"status":"updated"}\n\nid: event-42\ndata: {"status":"complete"}\n\n')));
+    vi.stubGlobal('fetch', fetchMock);
+    const received: string[] = [];
+    connectSse<{ status: string }>('/api/v1/events', event => received.push(event.id ?? ''), { maxReconnects: 1, retryDelayMs: 0 });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(received).toEqual(['event-41', 'event-42']);
+  });
 });

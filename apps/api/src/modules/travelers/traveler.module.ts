@@ -1,5 +1,5 @@
 import { Module, ServiceUnavailableException } from '@nestjs/common';
-import { isAllowedOutboundUrl, supplierRequestOptions } from '@travel/security';
+import { isAllowedOutboundUrlResolved, supplierRequestOptions } from '@travel/security';
 import {
   createDatabase,
   InMemoryTravelerVaultRefRepository,
@@ -23,7 +23,7 @@ export class VaultHttpClient implements TravelerVaultClient {
   constructor(private readonly baseUrl: string | undefined, private readonly allowlist: readonly string[] = (process.env.VAULT_ALLOWED_HOSTS ?? '').split(',').map(value => value.trim()).filter(Boolean), private readonly timeoutMs = Number(process.env.VAULT_REQUEST_TIMEOUT_MS ?? 5000)) {}
 
   private async post(path: string, body: unknown, method = 'POST', ownerId?: string): Promise<unknown> {
-    if (!this.baseUrl || !isAllowedOutboundUrl(this.baseUrl, this.allowlist)) throw new ServiceUnavailableException('traveler vault is unavailable');
+    if (!this.baseUrl || !(await isAllowedOutboundUrlResolved(this.baseUrl, this.allowlist))) throw new ServiceUnavailableException('traveler vault is unavailable');
     const serviceToken = process.env.VAULT_INTERNAL_SERVICE_TOKEN;
     if (!serviceToken) throw new ServiceUnavailableException('traveler vault is unavailable');
     const timeout = supplierRequestOptions(this.timeoutMs);
@@ -80,5 +80,6 @@ export class VaultHttpClient implements TravelerVaultClient {
       ? new InMemoryTravelerVaultRefRepository()
       : new TravelerVaultRefRepository(createDatabase()),
   }],
+  exports: [TRAVELER_VAULT_REF_STORE, TRAVELER_VAULT_CLIENT],
 })
 export class TravelerModule {}

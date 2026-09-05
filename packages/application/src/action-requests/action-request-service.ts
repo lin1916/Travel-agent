@@ -4,7 +4,7 @@ import { ActionRequestInputSchema } from '@travel/contracts';
 
 export interface ActionRequestRecord extends ActionRequestView {
   ownerId: string; decisionActorId?: string; decisionReason?: string; policySnapshot?: PolicySnapshot;
-  requestHash: string; correlationId: string; consumedAt?: string;
+  requestHash: string; requestId?: string; correlationId: string; consumedAt?: string;
 }
 export interface ActionRequestStore { create(record: ActionRequestRecord): Promise<void>; get(id: string): Promise<ActionRequestRecord | null>; save(record: ActionRequestRecord): Promise<void> }
 export class InMemoryActionRequestStore implements ActionRequestStore {
@@ -15,7 +15,7 @@ export class InMemoryActionRequestStore implements ActionRequestStore {
 }
 export interface ActionRequestDecision { approved: boolean; reason: string; expectedVersion: number }
 export interface ConsumeBinding { kind: ActionRequestInput['kind']; resourceId: string; requestHash: string }
-export interface ActionRequestCreateOptions { correlationId: string; expiresAt?: string; reasons?: PolicyReason[]; policySnapshot?: PolicySnapshot }
+export interface ActionRequestCreateOptions { requestId?: string; correlationId?: string; expiresAt?: string; reasons?: PolicyReason[]; policySnapshot?: PolicySnapshot }
 export interface ActionRequestMetrics { interventions: { inc(value?: number, labels?: Record<string, string>): void } }
 
 export class ActionRequestService {
@@ -23,7 +23,7 @@ export class ActionRequestService {
   async create(ownerId: string, rawInput: ActionRequestInput, options: ActionRequestCreateOptions): Promise<ActionRequestView> {
     const input = ActionRequestInputSchema.parse(rawInput);
     if (input.risk === 'commit' || input.risk === 'redirect') this.metrics?.interventions.inc(1, { kind: input.kind });
-    const request: ActionRequestRecord = { ...structuredClone(input), id: randomUUID(), status: 'pending', version: 1, reasons: structuredClone(options.reasons ?? []), expiresAt: options.expiresAt ?? new Date(this.now().getTime() + 5 * 60_000).toISOString(), ownerId, policySnapshot: options.policySnapshot ? structuredClone(options.policySnapshot) : undefined, requestHash: createHash('sha256').update(JSON.stringify(input)).digest('hex'), correlationId: options.correlationId };
+    const request: ActionRequestRecord = { ...structuredClone(input), id: randomUUID(), status: 'pending', version: 1, reasons: structuredClone(options.reasons ?? []), expiresAt: options.expiresAt ?? new Date(this.now().getTime() + 5 * 60_000).toISOString(), ownerId, policySnapshot: options.policySnapshot ? structuredClone(options.policySnapshot) : undefined, requestHash: createHash('sha256').update(JSON.stringify(input)).digest('hex'), requestId: options.requestId ?? randomUUID(), correlationId: options.correlationId ?? randomUUID() };
     await this.store.create(request);
     return this.view(request);
   }

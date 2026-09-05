@@ -41,8 +41,11 @@ export class CapabilityGateway {
     if (!inputResult.success) {
       throw createAppError('validation_error', context.correlationId, inputResult.error.issues[0]?.message);
     }
-    if (input && typeof input === 'object' && 'tripId' in input && (input as { tripId?: unknown }).tripId !== context.tripId) {
-      throw this.policyChecker.blocked(context, 'tool input trip does not match capability context');
+    if (input && typeof input === 'object' && 'tripId' in input) {
+      const inputTripId = (input as { tripId?: unknown }).tripId;
+      if (!context.tripId || inputTripId !== context.tripId) {
+        throw this.policyChecker.blocked(context, 'tool input trip does not match capability context');
+      }
     }
     const decision = this.policyChecker.check(tool, context);
     if (!decision.allowed) throw this.policyChecker.blocked(context, decision.reason ?? 'policy denied');

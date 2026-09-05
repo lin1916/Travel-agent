@@ -12,6 +12,6 @@
     "lint": "eslint . --no-warn-ignored",
     "test": "vitest run --passWithNoTests"
   },
-  "dependencies": { "@travel/contracts": "workspace:*", "@travel/application": "workspace:*", "@travel/capability-gateway": "workspace:*", "zod": "^3.25.76" },
+  "dependencies": { "@travel/contracts": "workspace:*", "@travel/application": "workspace:*", "@travel/capability-gateway": "workspace:*", "@travel/security": "workspace:*", "@earendil-works/pi-agent-core": "0.84.4", "@earendil-works/pi-ai": "0.84.4", "zod": "^3.25.76" },
   "devDependencies": { "@types/node": "^22.15.3", "typescript": "^5.8.3", "eslint": "^9.24.0", "vitest": "^3.1.1" }
 }

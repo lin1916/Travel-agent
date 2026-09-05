@@ -1,6 +1,8 @@
 export interface LogEvent { name: string; requestId: string; correlationId: string; fields?: Record<string, unknown> }
 export interface RedactedLogger { info(event: LogEvent, fields?: Record<string, unknown>): void; warn(event: LogEvent, fields?: Record<string, unknown>): void; error(event: LogEvent, fields?: Record<string, unknown>): void }
 const SENSITIVE = /(name|fullname|firstname|lastname|idnumber|idcard|passport|phonenumber|mobile|email|authorization|cookie|password|secret|token|payment|card|cvv|encrypted|ciphertext|plaintext|rawbody|traveler)/i;
+const SAFE_ID = /^[A-Za-z0-9._:-]{1,128}$/;
+function safeIdentifier(value: string): string { return SAFE_ID.test(value) && !/(?:\d{7,}|[\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/.test(value) ? value : '[REDACTED_ID]'; }
 function sensitiveKey(key: string): boolean { return SENSITIVE.test(key.replace(/([a-z])([A-Z])/g, '$1$2').toLowerCase().replace(/[^a-z]/g, '')); }
 function redact(value: unknown, key = ''): unknown {
   if (sensitiveKey(key)) return '[REDACTED]';
@@ -12,7 +14,7 @@ function redact(value: unknown, key = ''): unknown {
   return value;
 }
 export function serializeLogEvent(event: LogEvent, fields?: Record<string, unknown>): string {
-  const safe = { name: event.name, requestId: event.requestId, correlationId: event.correlationId, fields: redact({ ...(event.fields ?? {}), ...(fields ?? {}) }) };
+  const safe = { name: event.name, requestId: safeIdentifier(event.requestId), correlationId: safeIdentifier(event.correlationId), fields: redact({ ...(event.fields ?? {}), ...(fields ?? {}) }) };
   return JSON.stringify(safe);
 }
 export function createRedactedLogger(write: (line: string) => void = line => process.stdout.write(`${line}\n`)): RedactedLogger {

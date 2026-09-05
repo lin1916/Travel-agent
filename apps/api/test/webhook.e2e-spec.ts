@@ -84,6 +84,8 @@ describe('supplier webhook boundary', () => {
         externalEventId: 'external-event-1',
         orderRef: { supplierId: 'mock-train', supplierOrderId: 'supplier-order-1' },
         source: 'webhook',
+        requestId: expect.any(String),
+        correlationId: expect.any(String),
       },
     }]);
     expect(JSON.stringify(queued[0])).not.toContain('confirmed');

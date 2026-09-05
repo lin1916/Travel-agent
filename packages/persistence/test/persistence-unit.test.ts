@@ -178,4 +178,60 @@ describe('persistence boundary helpers', () => {
     const repository = new ActionRequestRepository(db);
     await expect(repository.save({ id: 'ar', tripId: 't', resourceId: 'r', kind: 'booking', risk: 'commit', status: 'approved', reasons: [], expiresAt: new Date().toISOString(), version: 2, ownerId: 'o', requestHash: 'h', correlationId: 'c' })).rejects.toThrow(/conflict/i);
   });
+
+  it('persists and restores both action request IDs', async () => {
+    let inserted: Record<string, unknown> | undefined;
+    const row = {
+      id: 'ar-ids',
+      trip_id: 'trip-1',
+      owner_id: 'owner-1',
+      version: 1,
+      status: 'pending',
+      payload_json: JSON.stringify({ tripId: 'trip-1', resourceId: 'offer-1', kind: 'booking', risk: 'commit', reasons: [] }),
+      request_hash: 'hash-1',
+      policy_snapshot_json: null,
+      decision_actor_id: null,
+      decision_reason: null,
+      request_id: 'request-1',
+      correlation_id: 'correlation-1',
+      expires_at: '2026-09-02T00:00:00.000Z',
+      consumed_at: null,
+    };
+    const db = {
+      insertInto: () => ({
+        values: (value: Record<string, unknown>) => {
+          inserted = value;
+          return { execute: async () => undefined };
+        },
+      }),
+      selectFrom: () => ({
+        selectAll: () => ({
+          where: () => ({ executeTakeFirst: async () => row }),
+        }),
+      }),
+    } as any;
+    const repository = new ActionRequestRepository(db);
+    const record = {
+      id: 'ar-ids',
+      tripId: 'trip-1',
+      resourceId: 'offer-1',
+      kind: 'booking',
+      risk: 'commit',
+      status: 'pending',
+      reasons: [],
+      expiresAt: '2026-09-02T00:00:00.000Z',
+      version: 1,
+      ownerId: 'owner-1',
+      requestHash: 'hash-1',
+      requestId: 'request-1',
+      correlationId: 'correlation-1',
+    } as any;
+
+    await repository.create(record);
+    expect(inserted).toMatchObject({ request_id: 'request-1', correlation_id: 'correlation-1' });
+    await expect(repository.get('ar-ids')).resolves.toMatchObject({
+      requestId: 'request-1',
+      correlationId: 'correlation-1',
+    });
+  });
 });

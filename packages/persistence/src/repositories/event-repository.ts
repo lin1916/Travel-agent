@@ -91,4 +91,27 @@ export class EventRepository {
     const rows = await this.db.selectFrom('event_log').selectAll().where('trip_id', '=', tripId).where('stream_position', '>', afterPosition).orderBy('stream_position').limit(limit).execute();
     return rows.map(row => ({ position: Number(row.stream_position), envelope: envelopeFromRow(row) }));
   }
+
+  async conversationEventsAfter(conversationId: string, afterSequence = 0, limit = 100): Promise<PersistedStreamEvent[]> {
+    const rows = await this.db.selectFrom('event_log').selectAll()
+      .where('aggregate_type', '=', 'conversation')
+      .where('aggregate_id', '=', conversationId)
+      .where('sequence', '>', afterSequence)
+      .orderBy('sequence').limit(limit).execute();
+    return rows.map(row => ({ position: row.sequence, envelope: envelopeFromRow(row) }));
+  }
+
+  async conversationEvent(eventId: string): Promise<PersistedStreamEvent | undefined> {
+    const row = await this.db.selectFrom('event_log').selectAll()
+      .where('event_id', '=', eventId)
+      .where('aggregate_type', '=', 'conversation').executeTakeFirst();
+    return row ? { position: row.sequence, envelope: envelopeFromRow(row) } : undefined;
+  }
+
+  async deleteConversationEvents(conversationId: string, tx?: DatabaseTransaction): Promise<void> {
+    await (tx ?? this.db).deleteFrom('event_log')
+      .where('aggregate_type', '=', 'conversation').where('aggregate_id', '=', conversationId).execute();
+    await (tx ?? this.db).deleteFrom('outbox_events')
+      .where('aggregate_type', '=', 'conversation').where('aggregate_id', '=', conversationId).execute();
+  }
 }

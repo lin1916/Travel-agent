@@ -14,6 +14,7 @@ export function connectSse<T>(url: string, onEvent: (event: SseEvent<T>) => void
   const controller = new AbortController();
   options.signal?.addEventListener('abort', () => controller.abort(), { once: true });
   let lastEventId = options.lastEventId;
+  const seenEventIds = new Set<string>();
   const maxReconnects = options.maxReconnects ?? 3;
   const retryDelayMs = options.retryDelayMs ?? 250;
 
@@ -33,6 +34,8 @@ export function connectSse<T>(url: string, onEvent: (event: SseEvent<T>) => void
         const id = lines.find(line => line.startsWith('id:'))?.slice(3).trim();
         const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim();
         const data = lines.filter(line => line.startsWith('data:')).map(line => line.slice(5).trim()).join('\n');
+        if (id && seenEventIds.has(id)) continue;
+        if (id) seenEventIds.add(id);
         if (id) lastEventId = id;
         if (data) {
           try { onEvent({ id, event, data: JSON.parse(data) as T }); } catch { /* ignore malformed public events */ }

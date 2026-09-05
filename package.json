@@ -1,7 +1,11 @@
 {
   "name": "travel-agent",
+  "version": "0.1.0-alpha.1",
   "private": true,
-  "packageManager": "pnpm@9.15.5",
+  "packageManager": "pnpm@11.19.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
@@ -12,8 +16,9 @@
     "test:e2e": "turbo run test:e2e",
     "test:full-flow": "pnpm --filter @travel/testkit test -- --run full-trip",
     "db:migrate": "pnpm --filter @travel/persistence db:migrate",
+    "smoke:conversation-first": "pnpm --filter @travel/api smoke:conversation-first",
     "security:scan-sensitive-output": "node packages/security/scripts/scan-sensitive-output.mjs apps packages",
-    "ci": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:integration && pnpm test:e2e && pnpm security:scan-sensitive-output"
+    "ci": "pnpm typecheck && pnpm lint && pnpm db:migrate && pnpm test && pnpm test:integration && pnpm test:e2e && pnpm test:full-flow && pnpm --filter @travel/api exec vitest run test/full-trip-flow.e2e-spec.ts && pnpm --filter @travel/web test:e2e -- full-trip-flow.spec.ts && pnpm audit --audit-level=high && pnpm security:scan-sensitive-output"
   },
   "devDependencies": {
     "@typescript-eslint/parser": "^8.29.1",

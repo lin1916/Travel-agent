@@ -16,6 +16,20 @@ function item(id: string, startsAt: string, endsAt: string): ItineraryItem {
 }
 
 describe('findDirectOverlaps', () => {
+  it('allows a hotel stay to coexist with daytime activities in either insertion order', () => {
+    const stay = { ...item('hotel', '2026-10-01T14:00:00+08:00', '2026-10-04T12:00:00+08:00'), category: 'stay' as const };
+    const activity = item('museum', '2026-10-02T09:00:00+08:00', '2026-10-02T11:00:00+08:00');
+    expect(findDirectOverlaps([stay], activity)).toEqual([]);
+    expect(findDirectOverlaps([activity], stay)).toEqual([]);
+  });
+
+  it('still detects overlapping hotel stays and transport/activity conflicts', () => {
+    const stay = { ...item('hotel', '2026-10-01T14:00:00+08:00', '2026-10-04T12:00:00+08:00'), category: 'stay' as const };
+    expect(findDirectOverlaps([stay], { ...stay, id: 'other-hotel' })).toHaveLength(1);
+    const activity = item('museum', '2026-10-02T09:00:00+08:00', '2026-10-02T11:00:00+08:00');
+    expect(findDirectOverlaps([activity], { ...activity, id: 'transfer', category: 'transport' })).toHaveLength(1);
+  });
+
   it('uses half-open intervals so touching items are allowed', () => {
     const existing = item('a', '2026-09-01T01:00:00.000Z', '2026-09-01T02:00:00.000Z');
     const candidate = item('b', '2026-09-01T02:00:00.000Z', '2026-09-01T03:00:00.000Z');

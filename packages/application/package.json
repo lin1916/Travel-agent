@@ -18,6 +18,7 @@
     "@travel/domain": "workspace:*"
     ,"@travel/persistence": "workspace:*"
     ,"@travel/supplier-adapters": "workspace:*"
+    ,"@travel/security": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.15.3",

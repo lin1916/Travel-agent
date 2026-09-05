@@ -8,6 +8,8 @@ import { FastifyAdapter } from '@nestjs/platform-fastify';
 describe('health', () => {
   let app: INestApplication;
   beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
+    process.env.TRAVEL_AGENT_TEST_PROVIDER = 'rule';
     const module = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = module.createNestApplication(new FastifyAdapter());
     await app.init();

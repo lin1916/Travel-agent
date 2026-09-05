@@ -1,17 +1,20 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
-import { AppModule } from './app.module.js';
+import { selectApiRootModule } from './app.module.js';
 import { ApplicationErrorFilter } from './app-error.filter.js';
 import { closeDatabase, createDatabase, migrateToLatest } from '@travel/persistence';
 import { buildSecurityHeaders, createFastifySecurityHook } from '@travel/security';
 import { travelMetrics } from '@travel/observability';
+import { shouldRunBootstrapMigrations } from './local-planning-memory-mode.js';
 
 const port = Number(process.env.API_PORT ?? 3000);
-const bootstrapDb = createDatabase();
-await migrateToLatest(bootstrapDb);
-await closeDatabase(bootstrapDb);
-const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter({ bodyLimit: Number(process.env.REQUEST_BODY_LIMIT_BYTES ?? 1_000_000) }), { rawBody: true });
+if (shouldRunBootstrapMigrations()) {
+  const bootstrapDb = createDatabase();
+  await migrateToLatest(bootstrapDb);
+  await closeDatabase(bootstrapDb);
+}
+const app = await NestFactory.create<NestFastifyApplication>(selectApiRootModule(), new FastifyAdapter({ bodyLimit: Number(process.env.REQUEST_BODY_LIMIT_BYTES ?? 1_000_000) }), { rawBody: true });
 app.useGlobalFilters(new ApplicationErrorFilter());
 const fastify = app.getHttpAdapter().getInstance();
 fastify.addHook('onRequest', async (request: { method: string; headers: Record<string, string | string[] | undefined> }) => {

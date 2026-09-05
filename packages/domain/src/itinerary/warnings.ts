@@ -5,7 +5,7 @@ export async function buildSoftWarnings(
   routeEstimator: RouteEstimator,
 ): Promise<ItineraryWarning[]> {
   const confirmed = itinerary
-    .filter(item => item.confirmed)
+    .filter(item => item.confirmed && item.category !== 'stay')
     .sort((left, right) => Date.parse(left.startsAt) - Date.parse(right.startsAt));
   const warnings: ItineraryWarning[] = [];
 

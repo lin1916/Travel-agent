@@ -5,25 +5,28 @@ import type { MockOrderService } from '@travel/supplier-adapters';
 import type { RedirectTokenService } from '@travel/contracts';
 import { ApplicationError } from '../errors.js';
 import { ActionRequestService } from '../action-requests/action-request-service.js';
+import { isProviderIssuedOpaqueReference } from '@travel/security';
 
 export interface CommitBookingIntent { intentId: string; expectedVersion: number; actionRequestId?: string; mandateId?: string; idempotencyKey: string; selectedOfferSnapshotHash: string; requestId?: string; correlationId?: string }
 export interface BookingIntentView { id: string; version: number; status: BookingIntentStatus; revalidation?: RevalidationResult }
 export interface CommitBookingResult { intent: BookingIntentView; supplierOrder?: SupplierOrderSnapshot; redirectUrl?: string; requiresAction?: ActionRequestView }
-export interface CreateBookingIntentInput { id: string; tripId: string; offerId: string; offerKind: any; supplierId: string; selectedOfferSnapshotHash: string; originalPriceCents: number; refundRulesHash: string; travelerDataGrantId: string; travelerDataGrantExpiresAt?: string; travelerIds?: string[]; requestedSensitiveFields?: string[]; travelerDataPurpose?: string; supplierLegalEntity?: string; refundable?: boolean; startsAt?: string; endsAt?: string }
+export interface CreateBookingIntentInput { id: string; tripId: string; offerId: string; offerKind: any; supplierId: string; selectedOfferSnapshotHash: string; originalPriceCents: number; refundRulesHash: string; travelerDataGrantId: string; travelerDataGrantExpiresAt?: string; travelerIds?: string[]; requestedSensitiveFields?: string[]; travelerDataPurpose?: string; supplierLegalEntity?: string; refundable?: boolean; startsAt?: string; endsAt?: string; requestId?: string; correlationId?: string }
 export interface PersistedSupplierOrder { id: string; ownerId: string; intentId: string; supplierId: string; externalIdempotencyKey: string; snapshot: SupplierOrderSnapshot }
-export interface BookingIntentStore { create(intent: BookingIntentAggregate & { [key: string]: unknown }): Promise<void>; get(id: string): Promise<(BookingIntentAggregate & { [key: string]: unknown }) | null>; save(intent: BookingIntentAggregate & { [key: string]: unknown }): Promise<void>; saveSupplierOrder?(order: PersistedSupplierOrder): Promise<void>; getSupplierOrder?(id: string): Promise<{ ownerId: string; snapshot: SupplierOrderSnapshot } | null>; getSupplierOrderForIntent?(intentId: string): Promise<{ ownerId: string; supplierId: string; snapshot: SupplierOrderSnapshot } | null>; claimCommit?(actorId: string, idempotencyKey: string, request: unknown): Promise<'claimed' | 'replay' | 'conflict'>; abandonCommit?(actorId: string, idempotencyKey: string, request: unknown): Promise<boolean>; getCommitResult?(actorId: string, idempotencyKey: string): Promise<CommitBookingResult | null>; saveCommitResult?(actorId: string, idempotencyKey: string, result: CommitBookingResult): Promise<void>; persistCommit?(intent: BookingIntentAggregate & { [key: string]: unknown }, order: PersistedSupplierOrder, result: CommitBookingResult, actorId: string, idempotencyKey: string): Promise<void> }
+export interface BookingIntentStore { create(intent: BookingIntentAggregate & { [key: string]: unknown }): Promise<void>; get(id: string): Promise<(BookingIntentAggregate & { [key: string]: unknown }) | null>; save(intent: BookingIntentAggregate & { [key: string]: unknown }): Promise<void>; saveSupplierOrder?(order: PersistedSupplierOrder): Promise<void>; getSupplierOrder?(id: string): Promise<{ ownerId: string; snapshot: SupplierOrderSnapshot } | null>; getSupplierOrderForIntent?(intentId: string): Promise<{ ownerId: string; supplierId: string; snapshot: SupplierOrderSnapshot } | null>; claimCommit?(actorId: string, idempotencyKey: string, request: unknown): Promise<'claimed' | 'replay' | 'conflict'>; abandonCommit?(actorId: string, idempotencyKey: string, request: unknown): Promise<boolean>; getCommitResult?(actorId: string, idempotencyKey: string): Promise<CommitBookingResult | null>; saveCommitResult?(actorId: string, idempotencyKey: string, result: CommitBookingResult): Promise<void>; persistCommit?(intent: BookingIntentAggregate & { [key: string]: unknown }, order: PersistedSupplierOrder, result: CommitBookingResult, actorId: string, idempotencyKey: string, requestId?: string, correlationId?: string): Promise<void> }
 export interface AuthorizedBookingOffer { snapshotHash: string; price: Money; startsAt: string; endsAt: string }
 export interface BookingAuthorization { authorize(actorId: string, intent: BookingIntentAggregate, input: CommitBookingIntent, offer: AuthorizedBookingOffer): Promise<{ consume(): Promise<void> }> }
 export interface RedirectResolution { intentId: string; supplierId: string; redirectUrl: string }
 
 export interface BookingPolicyFacts extends PolicySnapshot { itinerary?: ItineraryItem[] }
 export interface BookingPolicyFactsProvider { snapshotFor(command: ActionRequestInput): Promise<BookingPolicyFacts | null> }
+export interface TravelerReferenceValidator { ownsFields(ownerId: string, travelerIds: readonly string[], fieldNames: readonly string[]): Promise<boolean> }
 export interface TravelerDataGrantRef { id: string; intentId: string; expiresAt: string }
 export interface TravelerDataGrantContext { intentId: string; intentVersion: number; supplierLegalEntity: string; travelerIds: string[]; allowedFields: string[]; purpose: string; offerSnapshotHash: string; authorizationRef: string }
 export interface TravelerDataGrantStore { findById(id: string, actorId: string): Promise<{ id: string; ownerId?: string; intentId: string; intentVersion: number; supplierLegalEntity: string; travelerIds: string[]; allowedFields: string[]; purpose: string; offerSnapshotHash: string; authorizationRef: string; expiresAt: string; usedAt?: string | null; revokedAt?: string | null } | null>; consumeOnce(actorId: string, ref: TravelerDataGrantRef, context: TravelerDataGrantContext): Promise<unknown> }
 export interface BookingAuditSink { append(entry: { actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown>; requestId?: string; correlationId?: string }): Promise<void> }
-export interface BookingOutboxSink { append(entry: { eventId: string; aggregateId: string; eventType: string; redactedPayload: Record<string, unknown> }): Promise<void> }
-export interface BookingAuthorizationOptions { audit?: BookingAuditSink; outbox?: BookingOutboxSink; transaction?: <T>(callback: () => Promise<T>) => Promise<T>; requireDurable?: boolean; metrics?: BookingMetrics }
+export interface BookingOutboxEntry { eventId: string; aggregateId: string; eventType: string; redactedPayload: Record<string, unknown>; requestId?: string; correlationId?: string }
+export interface BookingOutboxSink { append(entry: BookingOutboxEntry): Promise<void> }
+export interface BookingAuthorizationOptions { audit?: BookingAuditSink; outbox?: BookingOutboxSink; transaction?: <T>(callback: (tx?: unknown) => Promise<T>) => Promise<T>; requireDurable?: boolean; policyStateIsAtomic?: boolean; metrics?: BookingMetrics }
 export interface BookingMetrics { supplierErrors: { inc(value?: number, labels?: Record<string, string>): void }; unknownOrders: { inc(value?: number, labels?: Record<string, string>): void }; auditAppends: { inc(value?: number, labels?: Record<string, string>): void } }
 
 export class RecordingBookingAuditSink implements BookingAuditSink {
@@ -31,15 +34,22 @@ export class RecordingBookingAuditSink implements BookingAuditSink {
   async append(entry: { actorId: string; tripId: string; intentId: string; actionRequestId: string; mandateId: string; event: string; redactedPayload: Record<string, unknown>; requestId?: string; correlationId?: string }): Promise<void> { this.entries.push(structuredClone(entry)); }
 }
 export class RecordingBookingOutboxSink implements BookingOutboxSink {
-  readonly entries: Array<{ eventId: string; aggregateId: string; eventType: string; redactedPayload: Record<string, unknown> }> = [];
-  async append(entry: { eventId: string; aggregateId: string; eventType: string; redactedPayload: Record<string, unknown> }): Promise<void> { this.entries.push(structuredClone(entry)); }
+  readonly entries: BookingOutboxEntry[] = [];
+  async append(entry: BookingOutboxEntry): Promise<void> { this.entries.push(structuredClone(entry)); }
+}
+export interface BookingOutboxWriter { append(entry: BookingOutboxEntry, tx?: unknown): Promise<void> }
+export class DurableBookingOutboxSink implements BookingOutboxSink {
+  constructor(private readonly writer: BookingOutboxWriter) {}
+  append(entry: BookingOutboxEntry): Promise<void> { return this.writer.append(entry); }
+  appendInTransaction(entry: BookingOutboxEntry, tx: unknown): Promise<void> { return this.writer.append(entry, tx); }
 }
 
 /** Resolves and evaluates the current ActionRequest + TravelMandate + facts, then consumes the exact grant and decision once. */
 export class GovernedBookingAuthorization implements BookingAuthorization {
   private readonly audit: BookingAuditSink;
   private readonly outbox: BookingOutboxSink;
-  private readonly transaction: <T>(callback: () => Promise<T>) => Promise<T>;
+  private readonly transaction: <T>(callback: (tx?: unknown) => Promise<T>) => Promise<T>;
+  private readonly executionRequiresAtomicPolicyState: boolean;
   private readonly metrics?: BookingMetrics;
   constructor(
     private readonly actions: ActionRequestService,
@@ -50,14 +60,20 @@ export class GovernedBookingAuthorization implements BookingAuthorization {
     options: BookingAuthorizationOptions = {},
   ) {
     const requireDurable = options.requireDurable ?? process.env.NODE_ENV === 'production';
-    if (requireDurable && (!options.audit || !options.transaction)) throw new Error('durable audit and transaction providers are required');
+    if (requireDurable && (!options.audit || !options.transaction || !options.outbox)) throw new Error('durable audit, transaction, and outbox providers are required');
     this.audit = options.audit ?? new RecordingBookingAuditSink();
     this.outbox = options.outbox ?? new RecordingBookingOutboxSink();
     this.transaction = options.transaction ?? (async callback => callback());
+    this.executionRequiresAtomicPolicyState = requireDurable && (
+      options.policyStateIsAtomic !== true
+      || typeof (options.audit as BookingAuditSink & { appendInTransaction?: unknown }).appendInTransaction !== 'function'
+      || typeof (options.outbox as BookingOutboxSink & { appendInTransaction?: unknown }).appendInTransaction !== 'function'
+    );
     this.metrics = options.metrics;
   }
 
   async authorize(actorId: string, intent: BookingIntentAggregate, input: CommitBookingIntent, offer: AuthorizedBookingOffer): Promise<{ consume(): Promise<void> }> {
+    if (this.executionRequiresAtomicPolicyState) throw new Error('atomic policy state and audit transaction providers are required');
     if (!input.actionRequestId || !input.mandateId) throw new Error('current ActionRequest and Mandate are required');
     const action = await this.actions.getRecord(input.actionRequestId, actorId);
     if (action.tripId !== intent.tripId || action.resourceId !== intent.offerId || action.kind !== 'booking' || action.risk !== 'commit'
@@ -84,12 +100,16 @@ export class GovernedBookingAuthorization implements BookingAuthorization {
     return { consume: async () => {
       if (consumed) throw new Error('booking authorization already consumed');
       consumed = true;
-      await this.transaction(async () => {
+      await this.transaction(async (tx) => {
         await this.actions.consume(action.id, actorId, action.version, { kind: 'booking', resourceId: intent.offerId, requestHash: action.requestHash });
         await this.grants.consumeOnce(actorId, { id: grant.id, intentId: grant.intentId, expiresAt: grant.expiresAt }, { intentId: intent.id, intentVersion: intent.version, supplierLegalEntity: grant.supplierLegalEntity, travelerIds: grant.travelerIds, allowedFields: grant.allowedFields, purpose: grant.purpose, offerSnapshotHash: intent.selectedOfferSnapshotHash ?? '', authorizationRef: action.id });
-        await this.audit.append({ actorId, tripId: intent.tripId, intentId: intent.id, actionRequestId: action.id, mandateId: mandate.id, requestId: input.requestId, correlationId: input.correlationId, event: 'BookingAuthorizationConsumed', redactedPayload: { intentVersion: intent.version, supplierId: intent.supplierId, offerId: intent.offerId } });
+        const auditEntry = { actorId, tripId: intent.tripId, intentId: intent.id, actionRequestId: action.id, mandateId: mandate.id, requestId: input.requestId, correlationId: input.correlationId, event: 'BookingAuthorizationConsumed', redactedPayload: { intentVersion: intent.version, supplierId: intent.supplierId, offerId: intent.offerId } };
+        if (tx !== undefined && typeof (this.audit as BookingAuditSink & { appendInTransaction?: Function }).appendInTransaction === 'function') await (this.audit as BookingAuditSink & { appendInTransaction: (entry: typeof auditEntry, tx: unknown) => Promise<void> }).appendInTransaction(auditEntry, tx);
+        else await this.audit.append(auditEntry);
         this.metrics?.auditAppends.inc(1, { event: 'BookingAuthorizationConsumed' });
-        await this.outbox.append({ eventId: randomUUID(), aggregateId: intent.id, eventType: 'BookingAuthorizationConsumed', redactedPayload: { actorId, actionRequestId: action.id, mandateId: mandate.id } });
+        const outboxEntry = { eventId: randomUUID(), aggregateId: intent.id, eventType: 'BookingAuthorizationConsumed', requestId: input.requestId, correlationId: input.correlationId, redactedPayload: { actorId, actionRequestId: action.id, mandateId: mandate.id } };
+        if (tx !== undefined && typeof (this.outbox as BookingOutboxSink & { appendInTransaction?: Function }).appendInTransaction === 'function') await (this.outbox as BookingOutboxSink & { appendInTransaction: (entry: typeof outboxEntry, tx: unknown) => Promise<void> }).appendInTransaction(outboxEntry, tx);
+        else await this.outbox.append(outboxEntry);
       });
     } };
   }
@@ -114,12 +134,19 @@ export class BookingServiceImpl {
   private readonly consumedActions = new Set<string>();
   private readonly idempotency = new Map<string, CommitBookingResult>();
   private readonly supplierOrders = new Map<string, { ownerId: string; intentId: string; supplierId: string; snapshot: SupplierOrderSnapshot }>();
-  constructor(private readonly store: BookingIntentStore, private readonly orders: MockOrderService, private readonly now: () => Date = () => new Date(), private readonly authorization?: BookingAuthorization, private readonly redirects?: RedirectTokenService, private readonly metrics?: BookingMetrics) {}
+  constructor(private readonly store: BookingIntentStore, private readonly orders: MockOrderService, private readonly now: () => Date = () => new Date(), private readonly authorization?: BookingAuthorization, private readonly redirects?: RedirectTokenService, private readonly metrics?: BookingMetrics, private readonly travelerRefs?: TravelerReferenceValidator) {}
 
   async create(actorId: string, input: CreateBookingIntentInput): Promise<BookingIntentView> {
     if (!actorId || !input.tripId || !input.travelerDataGrantId) throw new ApplicationError('validation_error', 'actor, trip, and traveler data grant are required');
+    if (process.env.NODE_ENV === 'production' && input.travelerIds?.some(ref => !isProviderIssuedOpaqueReference(ref))) {
+      throw new ApplicationError('validation_error', 'traveler references must be provider-issued opaque references');
+    }
+    if (this.travelerRefs && input.travelerIds?.length && input.requestedSensitiveFields?.length
+      && !(await this.travelerRefs.ownsFields(actorId, input.travelerIds, input.requestedSensitiveFields))) {
+      throw new ApplicationError('forbidden', 'traveler references are not authorized');
+    }
     const intent = createBookingIntent(input);
-    await this.store.create({ ...intent, ownerId: actorId, supplierId: input.supplierId, originalPriceCents: input.originalPriceCents, refundRulesHash: input.refundRulesHash, travelerDataGrantId: input.travelerDataGrantId, travelerDataGrantExpiresAt: input.travelerDataGrantExpiresAt, travelerIds: input.travelerIds, requestedSensitiveFields: input.requestedSensitiveFields, travelerDataPurpose: input.travelerDataPurpose, supplierLegalEntity: input.supplierLegalEntity ?? input.supplierId, refundable: input.refundable });
+    await this.store.create({ ...intent, ownerId: actorId, supplierId: input.supplierId, originalPriceCents: input.originalPriceCents, refundRulesHash: input.refundRulesHash, travelerDataGrantId: input.travelerDataGrantId, travelerDataGrantExpiresAt: input.travelerDataGrantExpiresAt, requestedSensitiveFields: input.requestedSensitiveFields, travelerDataPurpose: input.travelerDataPurpose, supplierLegalEntity: input.supplierLegalEntity ?? input.supplierId, refundable: input.refundable, requestId: input.requestId, correlationId: input.correlationId });
     return this.view(intent);
   }
 
@@ -201,7 +228,7 @@ export class BookingServiceImpl {
       const token = await this.redirects.issue({ intentId: intent.id, supplierId: String(intent.supplierId), nonce: randomUUID(), issuedAt: this.now().toISOString(), expiresAt: expiresAt.toISOString() }, expiresAt, actorId);
       result.redirectUrl = `/v1/supplier-redirects/${encodeURIComponent(String(intent.supplierId))}?token=${encodeURIComponent(token)}`;
     }
-    if (this.store.persistCommit) await this.store.persistCommit(next as BookingIntentAggregate & { [key: string]: unknown }, persistedOrder, result, actorId, input.idempotencyKey);
+    if (this.store.persistCommit) await this.store.persistCommit(next as BookingIntentAggregate & { [key: string]: unknown }, persistedOrder, result, actorId, input.idempotencyKey, input.requestId, input.correlationId);
     else await this.store.save(next as BookingIntentAggregate & { [key: string]: unknown });
     if (this.store.saveCommitResult && !this.store.persistCommit) await this.store.saveCommitResult(actorId, input.idempotencyKey, result);
     else this.idempotency.set(`${actorId}:${input.idempotencyKey}`, result);

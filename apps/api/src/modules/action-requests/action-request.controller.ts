@@ -3,6 +3,7 @@ import { ApplicationError, ActionRequestService } from '@travel/application';
 import { ActionRequestInputSchema } from '@travel/contracts';
 import { z } from 'zod';
 import { AuthGuard, type AuthenticatedRequest } from '../auth/auth.guard.js';
+import { ensureCorrelationContext } from '@travel/observability';
 import { ACTION_REQUEST_SERVICE } from './action-request.tokens.js';
 
 @Controller('v1/action-requests')
@@ -14,7 +15,8 @@ export class ActionRequestController {
   async create(@Req() req: AuthenticatedRequest, @Body() body: unknown) {
     const parsed = ActionRequestInputSchema.safeParse(body);
     if (!parsed.success) throw new ApplicationError('validation_error', parsed.error.issues[0]?.message);
-    return this.service.create(req.actor?.actorId ?? '', parsed.data, { correlationId: req.headers['x-correlation-id']?.toString() ?? req.headers['x-request-id']?.toString() ?? 'api' });
+    const context = ensureCorrelationContext(req as any);
+    return this.service.create(req.actor?.actorId ?? '', parsed.data, { requestId: context.requestId, correlationId: context.correlationId });
   }
 
   @Get(':id')

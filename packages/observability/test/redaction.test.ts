@@ -29,6 +29,12 @@ describe('redacted observability', () => {
     expect(serialized).toContain('order-1');
   });
 
+  it('does not serialize caller-controlled sensitive request or correlation IDs', () => {
+    const serialized = serializeLogEvent({ name: 'x', requestId: '13800138000', correlationId: '110101199001011234', fields: {} });
+    expect(serialized).not.toContain('13800138000');
+    expect(serialized).not.toContain('110101199001011234');
+  });
+
   it('exposes named travel workflow metrics instead of an unlabelled empty registry', () => {
     const travel = createTravelMetrics(new MetricsRegistry());
     travel.unknownOrders.inc();

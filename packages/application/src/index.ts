@@ -18,4 +18,11 @@ export * from './orders/cancellation-service.js';
 export * from './orders/refund-service.js';
 
 export * from './audit/audit-service.js';
+export * from './conversations/conversation-service.js';
+export * from './conversations/conversation-planning-coordinator.js';
+export * from './planning-context/planning-context-service.js';
+export * from './plans/plan-service.js';
+export * from './map/map-service.js';
+export * from './candidates/candidate-service.js';
+export * from './proposals/plan-proposal-service.js';
 

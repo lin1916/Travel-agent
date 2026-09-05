@@ -13,6 +13,12 @@ describe('audit service', () => {
     await expect(service.append(entry)).rejects.toThrow('db down');
   });
 
+  it('rejects traveler plaintext in free-text audit fields', async () => {
+    const service = new AuditServiceImpl({ append: async () => undefined, listForTrip: async () => [] });
+    await expect(service.append({ ...entry, reason: 'Alice Lovelace 13800138000' })).rejects.toThrow(/traveler plaintext|sensitive/i);
+    await expect(service.append({ ...entry, grantRef: 'Alice Lovelace' })).rejects.toThrow(/traveler plaintext|sensitive/i);
+  });
+
   it('maps booking authorization events to the durable audit contract', async () => {
     const entries: any[] = [];
     const sink = new DurableBookingAuditSink({ append: async (value: unknown) => { entries.push(value); } }, () => '2026-08-31T00:00:00.000Z');

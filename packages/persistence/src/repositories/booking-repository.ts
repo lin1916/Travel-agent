@@ -159,18 +159,18 @@ export class BookingRepository {
   async getCommitResult<T>(actorId: string, idempotencyKey: string): Promise<T | null> { return this.idempotency.getResponse<T>(`booking:commit:${actorId}`, idempotencyKey); }
   async saveCommitResult(actorId: string, idempotencyKey: string, response: unknown, tx?: DatabaseTransaction): Promise<void> { await this.idempotency.complete(`booking:commit:${actorId}`, idempotencyKey, response, tx); }
 
-  async persistCommit(intent: any, order: SupplierOrderRecord | SupplierOrderWrite, result: unknown, actorId: string, idempotencyKey: string): Promise<void> {
+  async persistCommit(intent: any, order: SupplierOrderRecord | SupplierOrderWrite, result: unknown, actorId: string, idempotencyKey: string, requestId?: string, correlationId?: string): Promise<void> {
     await this.transaction(async tx => {
       await this.save(intent, tx);
       await this.saveSupplierOrder(order, tx);
-      await this.appendOutbox(tx, intent.id, 'BookingIntentCommitted', { actorId, intentVersion: intent.version, supplierOrderId: order.id, lifecycleStatus: order.lifecycleStatus ?? order.snapshot.lifecycleStatus });
+      await this.appendOutbox(tx, intent.id, 'BookingIntentCommitted', { actorId, intentVersion: intent.version, supplierOrderId: order.id, lifecycleStatus: order.lifecycleStatus ?? order.snapshot.lifecycleStatus }, requestId, correlationId);
       await this.saveCommitResult(actorId, idempotencyKey, result, tx);
     });
   }
 
   async transaction<T>(callback: (tx: DatabaseTransaction) => Promise<T>): Promise<T> { return withTransaction(this.db, callback); }
 
-  async appendOutbox(tx: DatabaseTransaction, aggregateId: string, eventType: string, payload: Record<string, unknown>): Promise<void> {
+  async appendOutbox(tx: DatabaseTransaction, aggregateId: string, eventType: string, payload: Record<string, unknown>, requestId?: string, correlationId?: string): Promise<void> {
     const aggregateType = 'BookingIntent';
     const intent = await tx.selectFrom('booking_intents').select('trip_id').where('id', '=', aggregateId).executeTakeFirstOrThrow();
     const occurredAt = new Date().toISOString();
@@ -182,9 +182,25 @@ export class BookingRepository {
       tripId: intent.trip_id,
       schema_version: 1,
       occurred_at: occurredAt,
-      request_id: `booking:${aggregateId}`,
-      correlation_id: `booking:${aggregateId}`,
+      request_id: requestId ?? `booking:${aggregateId}`,
+      correlation_id: correlationId ?? requestId ?? `booking:${aggregateId}`,
       redacted_payload: payload,
+    });
+  }
+
+  async appendOutboxEvent(tx: DatabaseTransaction, entry: { eventId: string; aggregateId: string; eventType: string; requestId?: string; correlationId?: string; redactedPayload: Record<string, unknown> }): Promise<void> {
+    const intent = await tx.selectFrom('booking_intents').select('trip_id').where('id', '=', entry.aggregateId).executeTakeFirstOrThrow();
+    await new EventRepository(this.db).appendAndPublishable(tx, {
+      event_id: entry.eventId,
+      event_type: entry.eventType,
+      aggregate_type: 'BookingIntent',
+      aggregate_id: entry.aggregateId,
+      tripId: intent.trip_id,
+      schema_version: 1,
+      occurred_at: new Date().toISOString(),
+      request_id: entry.requestId ?? `booking:${entry.aggregateId}`,
+      correlation_id: entry.correlationId ?? entry.requestId ?? `booking:${entry.aggregateId}`,
+      redacted_payload: entry.redactedPayload,
     });
   }
 }

@@ -10,12 +10,21 @@
     }
   },
   "scripts": {
+    "pretest": "pnpm --filter @travel/application build && pnpm --filter @travel/security build && pnpm --filter @travel/supplier-adapters build && pnpm --filter @travel/vault build",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --no-warn-ignored",
     "test": "vitest run --passWithNoTests",
     "test:integration": "vitest run --passWithNoTests",
     "test:e2e": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@travel/application": "workspace:*",
+    "@travel/contracts": "workspace:*",
+    "@travel/domain": "workspace:*",
+    "@travel/security": "workspace:*",
+    "@travel/supplier-adapters": "workspace:*",
+    "@travel/vault": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

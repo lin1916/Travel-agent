@@ -1,12 +1,14 @@
-import { createHash } from 'node:crypto';
-import { BadRequestException, Body, ConflictException, Controller, Headers, HttpCode, Inject, Param, Post, Req, ServiceUnavailableException } from '@nestjs/common';
+import { createHash, randomUUID } from 'node:crypto';
+import { BadRequestException, Body, ConflictException, Controller, Headers, HttpCode, Inject, Optional, Param, Post, Req, ServiceUnavailableException } from '@nestjs/common';
 import { SupplierOrderUpdateSchema, type SupplierOrderRef } from '@travel/contracts';
 import type { SupplierAdapter } from '@travel/supplier-adapters';
 import { travelMetrics } from '@travel/observability';
+import { ReplayGuard } from '@travel/security';
 import { WEBHOOK_VERIFIER, type WebhookVerifier } from './webhook-verifier.js';
 
 export const WEBHOOK_INTAKE = Symbol('WEBHOOK_INTAKE');
 export const SUPPLIER_ADAPTER_REGISTRY = Symbol('SUPPLIER_ADAPTER_REGISTRY');
+export const WEBHOOK_REPLAY_GUARD = Symbol('WEBHOOK_REPLAY_GUARD');
 
 export interface WebhookAcceptance {
   supplierId: string;
@@ -30,6 +32,8 @@ export interface SupplierAdapterRegistry {
 
 interface RawWebhookRequest {
   rawBody?: Buffer;
+  requestId?: string;
+  correlationId?: string;
 }
 
 @Controller('/v1/webhooks/suppliers')
@@ -38,6 +42,7 @@ export class WebhookController {
     @Inject(WEBHOOK_VERIFIER) private readonly verifier: WebhookVerifier,
     @Inject(WEBHOOK_INTAKE) private readonly intake: WebhookIntake,
     @Inject(SUPPLIER_ADAPTER_REGISTRY) private readonly adapters: SupplierAdapterRegistry,
+    @Optional() @Inject(WEBHOOK_REPLAY_GUARD) private readonly replayGuard?: ReplayGuard,
   ) {}
 
   @Post(':supplierId')
@@ -52,10 +57,15 @@ export class WebhookController {
     const rawBody = request.rawBody;
     if (!rawBody) throw new BadRequestException('raw webhook body is required');
     const headers = Object.fromEntries(Object.entries(inputHeaders).flatMap(([key, value]) => typeof value === 'string' ? [[key.toLowerCase(), value]] : []));
-    const requestId = headers['x-request-id'] ?? `webhook:${supplierId}:${headers['x-webhook-event-id'] ?? 'unknown'}`;
-    const correlationId = headers['x-correlation-id'] ?? requestId;
-    const hasCallerCorrelation = Boolean(headers['x-request-id'] || headers['x-correlation-id']);
     const verified = this.verifier.verify({ ...headers, 'x-supplier-id': supplierId }, rawBody);
+    try {
+      this.replayGuard?.accept(verified.externalEventId, verified.timestampSeconds);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('duplicate')) throw new ConflictException('duplicate webhook event');
+      throw new BadRequestException(error instanceof Error ? error.message : 'invalid webhook replay window');
+    }
+    const requestId = request.requestId ?? randomUUID();
+    const correlationId = request.correlationId ?? requestId;
     const adapter = this.adapters.get(supplierId);
     if (!adapter?.parseWebhook) throw new ServiceUnavailableException('supplier webhook adapter unavailable');
 
@@ -66,7 +76,6 @@ export class WebhookController {
       || parsed.data.orderRef.supplierOrderId !== verified.orderRef.supplierOrderId) {
       throw new BadRequestException('supplier webhook identity mismatch');
     }
-
     const taskId = `webhook:${supplierId}:${verified.externalEventId}`;
     const orderId = this.intake.resolveOrderId ? await this.intake.resolveOrderId(verified.orderRef) : undefined;
     if (this.intake.resolveOrderId && !orderId) throw new ServiceUnavailableException('supplier order is not locally mapped; manual review required');
@@ -76,7 +85,8 @@ export class WebhookController {
       externalEventId: verified.externalEventId,
       orderRef: verified.orderRef,
       source: 'webhook',
-      ...(hasCallerCorrelation ? { requestId, correlationId } : {}),
+      requestId,
+      correlationId,
     } as const;
     const accepted = await this.intake.accept({
       supplierId,

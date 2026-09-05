@@ -17,6 +17,9 @@ describe('database migrations', () => {
       '011_inbox_delivery_claims',
       '012_after_sales',
       '013_audit',
+      '014_request_correlation_ids',
+      '015_planning_workspace',
+      '016_conversation_first_planning',
     ]);
     expect(migrations[3]?.name).toBe('004_agent_runs');
     expect(migrations[4]?.name).toBe('005_agent_run_summaries');
@@ -28,5 +31,10 @@ describe('database migrations', () => {
     expect(migrations[10]?.name).toBe('011_inbox_delivery_claims');
     expect(migrations[11]?.name).toBe('012_after_sales');
     expect(migrations[12]?.name).toBe('013_audit');
+    expect(migrations[13]?.name).toBe('014_request_correlation_ids');
+    expect(migrations[14]?.name).toBe('015_planning_workspace');
+    expect(migrations[14]?.down).toBeTypeOf('function');
+    expect(migrations[15]?.name).toBe('016_conversation_first_planning');
+    expect(migrations[15]?.down).toBeTypeOf('function');
   });
 });

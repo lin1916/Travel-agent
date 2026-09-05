@@ -23,6 +23,7 @@ export interface NewTravelerVaultRef {
 export interface TravelerVaultRefStore {
   save(input: NewTravelerVaultRef): Promise<void>;
   findByVaultTravelerId(vaultTravelerId: string): Promise<TravelerVaultRef | null>;
+  countActiveByOwner(ownerId: string): Promise<number>;
   ownsFields(ownerId: string, travelerIds: readonly string[], fieldNames: readonly string[]): Promise<boolean>;
   markDeleted(ownerId: string, vaultTravelerId: string, deletedAt: string): Promise<boolean>;
 }
@@ -66,6 +67,8 @@ export class InMemoryTravelerVaultRefRepository implements TravelerVaultRefStore
     const ref = this.refs.get(vaultTravelerId);
     return ref ? clone(ref) : null;
   }
+
+  async countActiveByOwner(ownerId: string): Promise<number> { return [...this.refs.values()].filter(ref => ref.ownerId === ownerId && ref.deletedAt === null).length; }
 
   async ownsFields(ownerId: string, travelerIds: readonly string[], fieldNames: readonly string[]): Promise<boolean> {
     if (travelerIds.length === 0 || fieldNames.length === 0) return false;
@@ -113,6 +116,11 @@ export class TravelerVaultRefRepository implements TravelerVaultRefStore {
     const row = await this.db.selectFrom('traveler_vault_refs').selectAll()
       .where('vault_traveler_id', '=', vaultTravelerId).executeTakeFirst();
     return row ? toRef(row) : null;
+  }
+
+  async countActiveByOwner(ownerId: string): Promise<number> {
+    const result = await this.db.selectFrom('traveler_vault_refs').select(({ fn }) => fn.countAll<number>().as('count')).where('owner_id', '=', ownerId).where('deleted_at', 'is', null).executeTakeFirst();
+    return Number(result?.count ?? 0);
   }
 
   async ownsFields(ownerId: string, travelerIds: readonly string[], fieldNames: readonly string[]): Promise<boolean> {
